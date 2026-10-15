@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+:root {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color-scheme: dark;
+  --bg-ink: #0B0D10;
+  --bg-panel: #14171B;
+  --text-main: #E6E8EB;
+  --text-muted: #8A93A3;
+  --signal: #E8A33D;
+  --state-ok: #4C9A6A;
+  --state-blocked: #C1443B;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-ink);
+  color: var(--text-main);
+  min-height: 100vh;
+}
+
+/* Base Panel */
+.panel-base {
+  background-color: var(--bg-panel);
+  border-radius: 0.75rem;
+}
+
+/* Presenter / Script Panel */
+.panel-demo {
+  background-color: #0E1115;
+  border: 1px dashed rgba(232, 163, 61, 0.35);
+  border-radius: 0.75rem;
+}
+
+/* Slide animation for live feed */
+@keyframes slideDownFade {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-down {
+  animation: slideDownFade 0.18s ease-out forwards;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0B0D10;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #22272E;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2D333B;
+}

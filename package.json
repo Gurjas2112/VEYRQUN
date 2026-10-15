@@ -1,0 +1,17 @@
+{
+  "name": "veyrqun-governance",
+  "version": "2.0.0",
+  "description": "VEYRQUN \u2014 Governance Layer for Financial AI Agents",
+  "main": "backend/app.py",
+  "scripts": {
+    "start": "concurrently \"npm --prefix frontend run dev\" \"python3 -m uvicorn backend.app:app --host 0.0.0.0 --port 8000\"",
+    "dev": "npm start",
+    "backend": "python3 -m uvicorn backend.app:app --host 0.0.0.0 --port 8000",
+    "frontend": "npm --prefix frontend run dev",
+    "test": "python -m pytest",
+    "benchmark": "python backend/benchmark.py"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
