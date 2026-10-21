@@ -14,7 +14,7 @@ from uuid import UUID
 
 from sqlalchemy import Connection, text
 
-from .db import canonical_ts, tx, utcnow
+from .db import PLATFORM, canonical_ts, tx, utcnow
 from .ids import uuid7
 from .money import fmt, to_decimal
 
@@ -113,6 +113,16 @@ def row_to_entry(row) -> dict:
     }
 
 
+_QUERY = text(
+    "SELECT * FROM audit.events WHERE workspace_id = :ws "
+    "AND (CAST(:agent AS text) IS NULL OR agent_id = :agent) "
+    "AND (CAST(:outcome AS text) IS NULL OR outcome = :outcome) "
+    "AND (CAST(:action AS text) IS NULL OR action_type = :action) "
+    "AND (CAST(:before AS bigint) IS NULL OR seq < :before) "
+    "ORDER BY seq DESC LIMIT :limit"
+)
+
+
 def query(
     workspace_id: UUID,
     *,
@@ -122,23 +132,23 @@ def query(
     limit: int = 50,
     before_seq: int | None = None,
 ) -> list[dict]:
-    """Newest first, keyset-paginated on seq (stable under concurrent inserts, unlike OFFSET)."""
-    clauses = ["workspace_id = :ws"]
-    params: dict = {"ws": workspace_id, "limit": limit}
-    for col, val in (("agent_id", agent_id), ("outcome", outcome), ("action_type", action_type)):
-        if val:
-            clauses.append(f"{col} = :{col}")
-            params[col] = val
-    if before_seq is not None:
-        clauses.append("seq < :before_seq")
-        params["before_seq"] = before_seq
-    sql = f"SELECT * FROM audit.events WHERE {' AND '.join(clauses)} ORDER BY seq DESC LIMIT :limit"  # noqa: S608
+    """Newest first, keyset-paginated on seq (stable under concurrent inserts, unlike OFFSET).
+    One static, fully parameterised statement: optional filters are NULL-tolerant, never string-built."""
+    params = {"ws": workspace_id, "agent": agent_id or None, "outcome": outcome or None,
+              "action": action_type or None, "before": before_seq, "limit": limit}
     with tx(workspace_id) as conn:
-        return [row_to_entry(r) for r in conn.execute(text(sql), params)]
+        return [row_to_entry(r) for r in conn.execute(_QUERY, params)]
 
 
-def get(entry_id: str) -> dict | None:
-    with tx() as conn:
+def query_ascending(workspace_id: UUID, *, since_seq: int, limit: int) -> list[dict]:
+    with tx(workspace_id) as conn:
+        rows = conn.execute(text("SELECT * FROM audit.events WHERE workspace_id = :ws AND seq > :s ORDER BY seq LIMIT :n"),
+                            {"ws": workspace_id, "s": since_seq, "n": limit})
+        return [row_to_entry(r) for r in rows]
+
+
+def get(entry_id: str, scope: UUID | str) -> dict | None:
+    with tx(scope) as conn:
         row = conn.execute(text("SELECT * FROM audit.events WHERE id = :id"), {"id": entry_id}).first()
     return row_to_entry(row) if row else None
 
@@ -148,7 +158,8 @@ def verify_chain(batch: int = 5000) -> dict:
     expected_prev = GENESIS
     checked = 0
     last_seq = -1
-    with tx() as conn:
+    # The chain is global, so verification needs platform scope; callers only get valid/broken_at back.
+    with tx(PLATFORM) as conn:
         while True:
             rows = conn.execute(
                 text("SELECT * FROM audit.events WHERE seq > :s ORDER BY seq LIMIT :n"), {"s": last_seq, "n": batch}

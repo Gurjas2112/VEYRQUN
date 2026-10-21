@@ -98,4 +98,4 @@ def test_rehashed_forgery_still_breaks_the_next_link(owner_engine):
 
 def test_single_entry_lookup():
     entry, _, _ = service.attempt_action("travel_agent_01", "flight_rebook", Decimal("5"))
-    assert audit.get(entry["id"])["entry_hash"] == entry["entry_hash"]
+    assert audit.get(entry["id"], service.default_workspace())["entry_hash"] == entry["entry_hash"]

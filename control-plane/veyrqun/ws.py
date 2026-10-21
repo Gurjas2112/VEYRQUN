@@ -2,22 +2,24 @@ from fastapi import WebSocket
 
 
 class ConnectionManager:
-    """Fans every ledger entry (plus the affected agent state) out to dashboard clients."""
+    """Fans ledger entries (plus affected agent state) out to dashboard clients of the same workspace."""
 
     def __init__(self) -> None:
-        self.active_connections: list[WebSocket] = []
+        self.active_connections: dict[WebSocket, str] = {}
 
-    async def connect(self, websocket: WebSocket) -> None:
+    async def connect(self, websocket: WebSocket, workspace_id: str) -> None:
         await websocket.accept()
-        self.active_connections.append(websocket)
+        self.active_connections[websocket] = str(workspace_id)
 
     def disconnect(self, websocket: WebSocket) -> None:
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
+        self.active_connections.pop(websocket, None)
 
     async def broadcast(self, message: dict) -> None:
+        target = message.get("workspace_id")
         disconnected = []
-        for connection in self.active_connections:
+        for connection, workspace in list(self.active_connections.items()):
+            if target is not None and workspace != target:
+                continue  # tenant isolation applies to the live feed too
             try:
                 await connection.send_json(message)
             except Exception:

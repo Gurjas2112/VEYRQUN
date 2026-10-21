@@ -17,7 +17,7 @@ DEFAULT_SETTINGS = {"injection_block_threshold": 0.9}
 
 _AGENT_POLICY_SQL = """
 SELECT a.id, a.agent_key, a.display_name, a.status, a.status_reason, a.mode, a.timezone, a.currency,
-       a.accountable_owner, a.business_service, a.policy_version, a.created_at,
+       a.accountable_owner, a.business_service, a.policy_version, a.created_at, a.owner_user_id,
        p.allowed_actions, p.blocked_actions, p.spend_cap_daily, p.max_per_transaction, p.action_limits,
        p.action_daily_caps, p.rate_limit_per_minute, p.approval_threshold, p.redact_data_classes,
        p.block_data_classes

@@ -79,6 +79,8 @@ def active_key(purpose: str) -> tuple[str, Ed25519PrivateKey]:
         ).first()
     if row is None:
         kid, key = _create(purpose)
+        global _jwks_cache
+        _jwks_cache = None
     else:
         pem = keyring().decrypt(bytes(row.private_enc), aad=row.kid.encode())
         kid, key = row.kid, serialization.load_pem_private_key(pem, password=None)
@@ -92,11 +94,20 @@ def rotate(purpose: str) -> str:
         conn.execute(text("UPDATE iam.signing_keys SET retired_at = now() WHERE purpose = :p AND retired_at IS NULL"),
                      {"p": purpose})
     _cache.pop(purpose, None)
+    reset_cache()
     return active_key(purpose)[0]
 
 
+_jwks_cache: tuple[float, dict] | None = None
+JWKS_CACHE_S = 30
+
+
 def jwks() -> dict:
-    """Active keys plus keys retired in the last 24 h, so in-flight tokens still verify."""
+    """Active keys plus keys retired in the last 24 h, so in-flight tokens still verify.
+    Cached briefly: agent-token verification calls this on every request."""
+    global _jwks_cache
+    if _jwks_cache and time.monotonic() - _jwks_cache[0] < JWKS_CACHE_S:
+        return _jwks_cache[1]
     with tx() as conn:
         rows = conn.execute(
             text(
@@ -104,7 +115,9 @@ def jwks() -> dict:
                 "AND (retired_at IS NULL OR retired_at > now() - interval '24 hours') ORDER BY created_at"
             )
         ).all()
-    return {"keys": [r.public_jwk for r in rows]}
+    doc = {"keys": [r.public_jwk for r in rows]}
+    _jwks_cache = (time.monotonic(), doc)
+    return doc
 
 
 def issue_agent_token(workspace_id: str, agent_key: str, scopes: list[str], env: str) -> tuple[str, int]:
@@ -145,5 +158,7 @@ def check_client_secret(secret: str, stored_hash: str | None) -> bool:
 
 
 def reset_cache() -> None:
+    global _jwks_cache
     _cache.clear()
+    _jwks_cache = None
     keyring.cache_clear()

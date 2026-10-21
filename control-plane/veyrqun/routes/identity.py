@@ -2,6 +2,8 @@ import hmac
 import json
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from .. import keys, service
 from ..config import get_settings
@@ -20,11 +22,15 @@ def jwks():
 @router.post("/oauth/token")
 async def token(request: Request):
     """OAuth 2.0 client-credentials grant for agents (JSON or form-encoded)."""
-    if request.headers.get("content-type", "").startswith("application/x-www-form-urlencoded"):
-        payload = dict(await request.form())
-    else:
-        payload = await request.json()
-    body = TokenRequest.model_validate(payload)
+    try:
+        if request.headers.get("content-type", "").startswith("application/x-www-form-urlencoded"):
+            payload = dict(await request.form())
+        else:
+            payload = await request.json()
+        body = TokenRequest.model_validate(payload)
+    except (ValidationError, ValueError):
+        # RFC 6749 §5.2 error shape; never a 500 for a malformed client request.
+        return JSONResponse({"error": "invalid_request"}, status_code=400, headers={"Cache-Control": "no-store"})
     result = service.issue_token(body.client_id, body.client_secret)
     return Response(content=json.dumps(result), media_type="application/json",
                     headers={"Cache-Control": "no-store", "Pragma": "no-cache"})

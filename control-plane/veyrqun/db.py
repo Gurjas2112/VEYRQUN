@@ -89,12 +89,16 @@ def engine() -> Engine:
     return _engine(get_settings().database_url)
 
 
+PLATFORM = "*"  # system scope (seeding, chain verification, background jobs): sees every workspace
+
+
 @contextmanager
-def tx(workspace_id: UUID | None = None) -> Iterator[Connection]:
-    """One transaction. With a workspace id, row-level security is scoped to it (Phase 1B)."""
+def tx(scope: UUID | str | None = None) -> Iterator[Connection]:
+    """One transaction. Row-level security on tenant tables only shows rows for `scope`
+    (a workspace id, or PLATFORM). With no scope, tenant tables return nothing: fail closed."""
     with engine().begin() as conn:
-        if workspace_id is not None:
-            conn.execute(text("SELECT set_config('app.workspace_id', :w, true)"), {"w": str(workspace_id)})
+        if scope is not None:
+            conn.execute(text("SELECT set_config('app.workspace_id', :w, true)"), {"w": str(scope)})
         yield conn
 
 
@@ -149,8 +153,8 @@ def insert_agent(conn: Connection, workspace_id: UUID, agent: dict, created_by: 
         text(
             """
             INSERT INTO gov.agents (id, workspace_id, agent_key, display_name, timezone, currency, mode,
-                                    accountable_owner, business_service, client_secret_hash)
-            VALUES (:id, :ws, :key, :name, :tz, :currency, :mode, :owner, :service, :secret_hash)
+                                    accountable_owner, business_service, client_secret_hash, owner_user_id)
+            VALUES (:id, :ws, :key, :name, :tz, :currency, :mode, :owner, :service, :secret_hash, :owner_user)
             """
         ),
         {
@@ -164,6 +168,7 @@ def insert_agent(conn: Connection, workspace_id: UUID, agent: dict, created_by: 
             "owner": agent.get("accountable_owner"),
             "service": agent.get("business_service"),
             "secret_hash": agent.get("client_secret_hash"),
+            "owner_user": agent.get("owner_user_id"),
         },
     )
     insert_policy_version(conn, agent_id, 1, agent, created_by, "initial policy")
@@ -178,13 +183,14 @@ def bump_bundle_revision(conn: Connection, reason: str) -> int:
 
 def ensure_seed() -> UUID:
     """Create the default workspace (and demo fleet if it is empty). Idempotent; returns its id."""
-    with tx() as conn:
+    with tx(PLATFORM) as conn:
         ws = conn.execute(text("SELECT id FROM iam.workspaces WHERE slug = :s"), {"s": SEED_WORKSPACE["slug"]}).scalar()
         if ws is None:
             ws = uuid7()
             conn.execute(
-                text("INSERT INTO iam.workspaces (id, slug, name) VALUES (:id, :slug, :name) ON CONFLICT (slug) DO NOTHING"),
-                {"id": ws, **SEED_WORKSPACE},
+                text("INSERT INTO iam.workspaces (id, slug, name, environment) VALUES (:id, :slug, :name, :env) "
+                     "ON CONFLICT (slug) DO NOTHING"),
+                {"id": ws, **SEED_WORKSPACE, "env": get_settings().default_workspace_env},
             )
             ws = conn.execute(text("SELECT id FROM iam.workspaces WHERE slug = :s"), {"s": SEED_WORKSPACE["slug"]}).scalar_one()
         conn.execute(text("INSERT INTO gov.fleet_state (workspace_id) VALUES (:w) ON CONFLICT DO NOTHING"), {"w": ws})

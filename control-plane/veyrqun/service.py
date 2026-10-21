@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 
 from . import audit, counters, keys
 from .config import get_settings
-from .db import bump_bundle_revision, ensure_seed, insert_agent, insert_policy_version, tx, utcnow
+from .db import PLATFORM, bump_bundle_revision, ensure_seed, insert_agent, insert_policy_version, tx, utcnow
 from .ids import uuid7
 from .metrics import metrics
 from .models import check_policy_rules
@@ -92,6 +92,7 @@ def agent_view(row, workspace_id: UUID) -> dict:
         "currency": row.currency,
         "accountable_owner": row.accountable_owner,
         "business_service": row.business_service,
+        "owner_user_id": str(row.owner_user_id) if row.owner_user_id else None,
         "policy_version": row.policy_version,
         "allowed_actions": policy["allowed_actions"],
         "blocked_actions": policy["blocked_actions"],
@@ -341,7 +342,8 @@ def update_policy(agent_key: str, changes: dict, note: str | None = None, actor:
     return entry, get_agent(agent_key, ws)
 
 
-def rollback_policy(agent_key: str, version: int, actor: str = "operator", workspace_id: UUID | None = None) -> tuple[dict, dict]:
+def rollback_policy(agent_key: str, version: int, actor: str = "operator", workspace_id: UUID | None = None,
+                    note: str | None = None) -> tuple[dict, dict]:
     """Forward-only: re-publishes an old version's rules as a new version."""
     ws = workspace_id or default_workspace()
     row = _find_row(ws, agent_key)
@@ -352,7 +354,7 @@ def rollback_policy(agent_key: str, version: int, actor: str = "operator", works
             raise GovernanceError(404, f"Policy version {version} not found for '{agent_key}'")
         current = conn.execute(text("SELECT policy_version FROM gov.agents WHERE id = :a FOR UPDATE"), {"a": row.id}).scalar_one()
         new_version = current + 1
-        insert_policy_version(conn, row.id, new_version, _policy_dict(old), actor, f"rollback to v{version}")
+        insert_policy_version(conn, row.id, new_version, _policy_dict(old), actor, note or f"rollback to v{version}")
         conn.execute(text("UPDATE gov.agents SET policy_version = :v, updated_at = now() WHERE id = :a"),
                      {"v": new_version, "a": row.id})
         entry = _operator_entry(conn, ws, actor, agent_key, f"policy_rollback_v{version}", new_version)
@@ -461,7 +463,16 @@ def _approval_view(r) -> dict:
             "amount": fmt(r.amount), "currency": (r.currency or "").strip() or None, "status": r.status,
             "requested_by": r.requested_by, "decided_by": r.decided_by, "reason": r.reason,
             "created_at": r.created_at.isoformat(), "expires_at": r.expires_at.isoformat(),
-            "decided_at": r.decided_at.isoformat() if r.decided_at else None}
+            "decided_at": r.decided_at.isoformat() if r.decided_at else None, "payload": r.payload or {}}
+
+
+def get_approval(approval_id: str, workspace_id: UUID) -> dict:
+    with tx(workspace_id) as conn:
+        row = conn.execute(text("SELECT p.*, a.agent_key FROM gov.approvals p LEFT JOIN gov.agents a ON a.id = p.agent_id "
+                                "WHERE p.id = :id"), {"id": approval_id}).first()
+    if row is None:
+        raise GovernanceError(404, "approval not found")
+    return _approval_view(row)
 
 
 def list_approvals(status: str | None = "pending", workspace_id: UUID | None = None) -> list[dict]:
@@ -478,6 +489,64 @@ def list_approvals(status: str | None = "pending", workspace_id: UUID | None = N
     return [_approval_view(r) for r in rows]
 
 
+def workspace_env(workspace_id: UUID) -> str:
+    with tx() as conn:
+        return conn.execute(text("SELECT environment FROM iam.workspaces WHERE id = :w"), {"w": workspace_id}).scalar_one()
+
+
+def _jsonable(value):
+    if isinstance(value, Decimal):
+        return fmt(value)
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_jsonable(v) for v in value]
+    return value
+
+
+def request_change(kind: str, payload: dict, actor: str, workspace_id: UUID, agent_key: str | None = None) -> dict:
+    """Maker side of maker-checker: record the request; an approver (not the maker) executes it."""
+    agent_id = _find_row(workspace_id, agent_key).id if agent_key else None
+    approval_id = uuid7()
+    with tx(workspace_id) as conn:
+        conn.execute(
+            text("INSERT INTO gov.approvals (id, workspace_id, agent_id, kind, payload, requested_by, expires_at) "
+                 "VALUES (:id, :w, :a, :k, CAST(:p AS jsonb), :by, :exp)"),
+            {"id": approval_id, "w": workspace_id, "a": agent_id, "k": kind, "p": json.dumps(_jsonable(payload)),
+             "by": actor, "exp": utcnow() + APPROVAL_TTL},
+        )
+        _operator_entry(conn, workspace_id, actor, agent_key or FLEET_AGENT_ID, f"change_requested:{kind}")
+        row = conn.execute(text("SELECT p.*, a.agent_key FROM gov.approvals p LEFT JOIN gov.agents a ON a.id = p.agent_id "
+                                "WHERE p.id = :id"), {"id": approval_id}).first()
+    return _approval_view(row)
+
+
+def _execute_change(row, approver: str, ws: UUID) -> None:
+    """Checker side: apply an approved change. The maker stays the recorded author of the change."""
+    payload = row.payload or {}
+    maker = row.requested_by
+    if row.kind == "policy_publish":
+        current = _find_row(ws, row.agent_key).policy_version
+        if current != payload.get("base_version"):
+            raise GovernanceError(409, f"policy changed since the request (v{payload.get('base_version')} -> v{current})")
+        if payload.get("op") == "rollback":
+            rollback_policy(row.agent_key, int(payload["version"]), actor=maker, workspace_id=ws,
+                            note=f"rollback to v{payload['version']} (approved by {approver})")
+        else:
+            from .models import AgentPolicyUpdate
+
+            update = AgentPolicyUpdate.model_validate(payload["changes"])
+            changes = {f: getattr(update, f) for f in update.model_fields_set if f != "note"}
+            update_policy(row.agent_key, changes, f"{payload.get('note') or 'policy update'} (approved by {approver})",
+                          actor=maker, workspace_id=ws)
+    elif row.kind == "kill_release":
+        fleet_resume(actor=maker, workspace_id=ws)
+    elif row.kind == "role_grant":
+        from .auth.directory import grant_role
+
+        grant_role(ws, UUID(payload["user_id"]), payload["role"], f"{maker} (approved by {approver})")
+
+
 def decide_approval(approval_id: str, approve: bool, actor: str, reason: str | None = None,
                     workspace_id: UUID | None = None) -> tuple[dict, dict]:
     ws = workspace_id or default_workspace()
@@ -492,10 +561,22 @@ def decide_approval(approval_id: str, approve: bool, actor: str, reason: str | N
             raise GovernanceError(409, "approval expired")
         if row.requested_by == actor:
             raise GovernanceError(403, "maker-checker: you cannot decide a request you raised")
-        status = "approved" if approve else "rejected"
+    if approve and row.kind != "action":
+        try:
+            _execute_change(row, actor, ws)
+        except GovernanceError as exc:
+            with tx(ws) as conn:
+                conn.execute(text("UPDATE gov.approvals SET status = 'expired', decided_by = :by, reason = :r, "
+                                  "decided_at = now() WHERE id = :id"), {"by": actor, "r": exc.detail, "id": approval_id})
+            raise
+    status = "approved" if approve else "rejected"
+    if approve and row.kind != "action":
+        status = "consumed"  # executed now; nothing left to redeem
+    with tx(ws) as conn:
         conn.execute(text("UPDATE gov.approvals SET status = :s, decided_by = :by, reason = :r, decided_at = now() "
                           "WHERE id = :id"), {"s": status, "by": actor, "r": reason, "id": approval_id})
-        entry = _operator_entry(conn, ws, actor, row.agent_key or FLEET_AGENT_ID, f"approval_{status}")
+        entry = _operator_entry(conn, ws, actor, row.agent_key or FLEET_AGENT_ID,
+                                f"approval_{'approved' if approve else 'rejected'}:{row.kind}")
         updated = conn.execute(text("SELECT p.*, a.agent_key FROM gov.approvals p LEFT JOIN gov.agents a ON a.id = p.agent_id "
                                     "WHERE p.id = :id"), {"id": approval_id}).first()
     return entry, _approval_view(updated)
@@ -506,7 +587,7 @@ def decide_approval(approval_id: str, approve: bool, actor: str, reason: str | N
 
 def issue_token(client_id: str, client_secret: str) -> dict:
     slug, _, agent_key = client_id.partition(":")
-    with tx() as conn:
+    with tx(PLATFORM) as conn:  # pre-authentication lookup by (workspace slug, agent); returns one row at most
         row = conn.execute(
             text("SELECT a.agent_key, a.status, a.client_secret_hash, w.id AS ws FROM gov.agents a "
                  "JOIN iam.workspaces w ON w.id = a.workspace_id WHERE w.slug = :s AND a.agent_key = :k"),
