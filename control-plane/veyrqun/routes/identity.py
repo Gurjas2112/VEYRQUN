@@ -1,5 +1,6 @@
 import hmac
 import json
+from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
@@ -39,6 +40,7 @@ async def token(request: Request):
 @router.get("/bundles/current")
 def current_bundle(
     workspace: str = Query("default", pattern=SLUG),
+    workspace_id: UUID | None = None,
     authorization: str | None = Header(None),
     if_none_match: str | None = Header(None),
 ):
@@ -47,7 +49,7 @@ def current_bundle(
     presented = (authorization or "").removeprefix("Bearer ").strip()
     if expected and not hmac.compare_digest(presented, expected):
         raise HTTPException(401, "invalid service token")
-    payload, etag, revision, kid, signature = service.current_bundle(workspace)
+    payload, etag, revision, kid, signature = service.current_bundle(workspace, workspace_id)
     headers = {
         "ETag": f'"{etag}"',
         "X-Veyrqun-Bundle-Revision": str(revision),

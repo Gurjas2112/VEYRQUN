@@ -136,3 +136,10 @@ test_action_daily_cap_returned_as_limit if {
 test_observe_mode_is_reported if {
 	decide(object.union(base_agent, {"mode": "observe"}), {"action": "wire_transfer", "amount_minor": 1}).mode == "observe"
 }
+
+test_fail_open_safe_only_for_listed_zero_amount_actions if {
+	pd_safe := object.union(pd(base_agent), {"settings": {"fail_open_safe_actions": ["pay"]}})
+	authz.decision.fail_open_safe with data.policy_data as pd_safe with input as {"agent_id": "a1", "action": "pay", "amount_minor": 0}
+	not authz.decision.fail_open_safe with data.policy_data as pd_safe with input as {"agent_id": "a1", "action": "pay", "amount_minor": 1}
+	not authz.decision.fail_open_safe with data.policy_data as pd(base_agent) with input as {"agent_id": "a1", "action": "pay", "amount_minor": 0}
+}

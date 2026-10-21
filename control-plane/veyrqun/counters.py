@@ -7,6 +7,7 @@ lands on the same Redis Cluster slot (required for multi-key scripts).
 
 from __future__ import annotations
 
+import json
 import time
 from datetime import datetime
 from functools import lru_cache
@@ -123,6 +124,14 @@ def publish_revision(revision: int) -> None:
         c.publish("veyrqun:control", f'{{"type":"bundle","revision":{revision}}}')
     except redis.RedisError:
         # Gateways also poll the bundle endpoint with ETag, so a missed publish only delays propagation.
+        pass
+
+
+def set_fleet_state(workspace_id: str, stopped: bool, version: int) -> None:
+    """Gateways poll this key every second as the backstop to the pub/sub kill-switch message."""
+    try:
+        client().set(f"vq:fleet:{workspace_id}", json.dumps({"stopped": stopped, "version": version}))
+    except redis.RedisError:
         pass
 
 

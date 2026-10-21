@@ -13,7 +13,16 @@ from sqlalchemy import text
 from ..db import tx
 from ..money import to_minor
 
-DEFAULT_SETTINGS = {"injection_block_threshold": 0.9}
+DEFAULT_SETTINGS = {
+    "injection_block_threshold": 0.9,
+    # Read-only, zero-amount actions that may proceed if the counter store is unreachable.
+    "fail_open_safe_actions": ["account_summary", "balance_check", "score_check"],
+    # MCP tool -> JSON pointer to the money amount inside the tool's arguments (gateway uses this).
+    "tool_amounts": {
+        "waive_fee": "/amount", "flight_rebook": "/fare", "hotel_rebook": "/amount", "card_issue": "/fee",
+        "credit_limit_increase": "/increase", "wire_transfer": "/amount",
+    },
+}
 
 _AGENT_POLICY_SQL = """
 SELECT a.id, a.agent_key, a.display_name, a.status, a.status_reason, a.mode, a.timezone, a.currency,

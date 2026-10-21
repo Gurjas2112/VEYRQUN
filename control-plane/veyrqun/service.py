@@ -421,7 +421,8 @@ def _fleet(stopped: bool, actor: str, workspace_id: UUID | None) -> tuple[dict, 
                               "WHERE workspace_id = :w AND status = 'stopped'"), {"w": ws})
         entry = _operator_entry(conn, ws, actor, FLEET_AGENT_ID, "fleet_emergency_stop" if stopped else "fleet_resume")
         revision = _changed(conn, "fleet stop" if stopped else "fleet resume")
-    # Gateways act on this message immediately; the bundle revision is the durable backstop.
+    # Gateways act on this message immediately; the fleet key and the bundle revision are the backstops.
+    counters.set_fleet_state(str(ws), stopped, version)
     counters.publish_control(json.dumps({"type": "fleet", "workspace": str(ws), "stopped": stopped,
                                          "version": version, "revision": revision}))
     _after_commit(revision)
@@ -617,11 +618,14 @@ def rotate_secret(agent_key: str, actor: str = "operator", workspace_id: UUID | 
 # ---------------------------------------------------------------- bundles
 
 
-def current_bundle(workspace_slug: str) -> tuple[bytes, str, int, str, str]:
+def current_bundle(workspace_slug: str | None = None, workspace_id: UUID | None = None) -> tuple[bytes, str, int, str, str]:
     from .policy import bundle
 
     with tx() as conn:
-        ws = conn.execute(text("SELECT id FROM iam.workspaces WHERE slug = :s"), {"s": workspace_slug}).scalar()
+        if workspace_id is not None:
+            ws = conn.execute(text("SELECT id FROM iam.workspaces WHERE id = :w"), {"w": workspace_id}).scalar()
+        else:
+            ws = conn.execute(text("SELECT id FROM iam.workspaces WHERE slug = :s"), {"s": workspace_slug}).scalar()
     if ws is None:
         raise GovernanceError(404, "workspace not found")
     revision, data, _ = _snapshot(ws)

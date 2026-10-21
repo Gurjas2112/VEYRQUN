@@ -75,9 +75,19 @@ limits := {
 	"action_daily_cap_minor": object.get(object.get(agent, "action_daily_caps_minor", {}), input.action, null),
 }
 
+# A zero-amount, read-only action the policy explicitly marks safe may proceed if the counter store
+# is down (failure contract: Redis unreachable). Everything else fails closed.
+fail_open_safe if {
+	input.amount_minor == 0
+	input.action in object.get(object.get(data.policy_data, "settings", {}), "fail_open_safe_actions", [])
+}
+
+default fail_open_safe := false
+
 base := {
 	"mode": object.get(agent, "mode", "enforce"),
 	"policy_version": object.get(agent, "policy_version", 0),
+	"fail_open_safe": fail_open_safe,
 }
 
 # --- decision (the four bodies are mutually exclusive) ------------------------------------

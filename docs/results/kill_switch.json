@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-10-21T20:05:36Z",
+  "method": "control-plane fleet_stop() -> first 403 at the gateway (polling client); includes the client's own request round-trip. Single host, Redis pub/sub + 1 s poll backstop.",
+  "samples_ms": [
+    304.6,
+    311.9,
+    315.3,
+    331.2,
+    351.2
+  ],
+  "max_ms": 351.2,
+  "median_ms": 315.3,
+  "target_ms": 1000
+}

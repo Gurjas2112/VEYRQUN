@@ -22,6 +22,7 @@ def _idp(idp):
     yield idp
 
 PUBLIC = "public"
+SERVICE = "service"   # gateway service token only
 SESSION = "session"   # any authenticated user, no specific permission
 
 ENDPOINTS: dict[tuple[str, str], str] = {
@@ -76,6 +77,9 @@ ENDPOINTS: dict[tuple[str, str], str] = {
     ("GET", "/metrics"): "metrics:read",
     ("GET", "/metrics/prometheus"): PUBLIC,       # bearer METRICS_TOKEN when configured
     ("GET", "/health"): PUBLIC,
+    ("POST", "/internal/approvals"): SERVICE,
+    ("GET", "/internal/approvals/{approval_id}"): SERVICE,
+    ("POST", "/internal/approvals/{approval_id}/consume"): SERVICE,
 }
 
 BODIES = {
@@ -100,7 +104,7 @@ def test_every_endpoint_is_classified():
     stale = set(ENDPOINTS) - _schema_endpoints()
     assert not unclassified, f"add these endpoints to the authorization matrix: {sorted(unclassified)}"
     assert not stale, f"matrix lists endpoints that no longer exist: {sorted(stale)}"
-    assert {p for p in ENDPOINTS.values() if p not in (PUBLIC, SESSION)} <= set(PERMISSIONS)
+    assert {p for p in ENDPOINTS.values() if p not in (PUBLIC, SESSION, SERVICE)} <= set(PERMISSIONS)
 
 
 def _call(client, method, path, target_user):
@@ -128,6 +132,9 @@ def test_endpoint_x_role(method, path, role):
             login_as(client, make_user((role,)))
         status = _call(client, method, path, target).status_code
 
+    if perm == SERVICE:
+        assert status == 401, f"service endpoint must reject user/anonymous callers, got {status}"
+        return
     if perm == PUBLIC:
         assert status not in (401, 403) or path in ("/oauth/token",), status
         return

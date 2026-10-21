@@ -3,55 +3,196 @@
   "$id": "https://github.com/Gurjas2112/VEYRQUN/policies/data.schema.json",
   "title": "VEYRQUN policy data (bundle data.json -> data.policy_data)",
   "type": "object",
-  "required": ["agents", "fleet"],
+  "required": [
+    "agents",
+    "fleet"
+  ],
   "additionalProperties": false,
   "properties": {
-    "revision": {"type": "integer", "minimum": 0},
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
     "settings": {
       "type": "object",
       "additionalProperties": false,
-      "properties": {"injection_block_threshold": {"type": "number", "minimum": 0, "maximum": 1.01}}
+      "properties": {
+        "injection_block_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1.01
+        },
+        "fail_open_safe_actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        },
+        "tool_amounts": {
+          "type": "object",
+          "description": "MCP tool -> JSON pointer into tool arguments for the money amount",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^/"
+          }
+        }
+      }
     },
     "fleet": {
       "type": "object",
-      "required": ["stopped"],
+      "required": [
+        "stopped"
+      ],
       "additionalProperties": false,
-      "properties": {"stopped": {"type": "boolean"}, "version": {"type": "integer", "minimum": 0}}
+      "properties": {
+        "stopped": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
     },
     "agents": {
       "type": "object",
-      "propertyNames": {"pattern": "^[a-z0-9][a-z0-9_-]{2,63}$"},
-      "additionalProperties": {"$ref": "#/$defs/agent"}
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_-]{2,63}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/agent"
+      }
     }
   },
   "$defs": {
-    "minor": {"type": "integer", "minimum": 0, "description": "Money in integer minor units (ISO 4217 exponent)"},
-    "optionalMinor": {"oneOf": [{"$ref": "#/$defs/minor"}, {"type": "null"}]},
-    "action": {"type": "string", "pattern": "^[a-z][a-z0-9_:.\\-]{1,63}$"},
-    "dataClass": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$"},
+    "minor": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Money in integer minor units (ISO 4217 exponent)"
+    },
+    "optionalMinor": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/minor"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "action": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_:.\\-]{1,63}$"
+    },
+    "dataClass": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{1,31}$"
+    },
     "agent": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "mode", "policy_version", "allowed_actions", "blocked_actions", "spend_cap_daily_minor",
-                   "max_per_transaction_minor", "action_limits_minor", "action_daily_caps_minor",
-                   "rate_limit_per_minute", "approval_threshold_minor", "redact_data_classes", "block_data_classes"],
+      "required": [
+        "status",
+        "mode",
+        "policy_version",
+        "allowed_actions",
+        "blocked_actions",
+        "spend_cap_daily_minor",
+        "max_per_transaction_minor",
+        "action_limits_minor",
+        "action_daily_caps_minor",
+        "rate_limit_per_minute",
+        "approval_threshold_minor",
+        "redact_data_classes",
+        "block_data_classes"
+      ],
       "properties": {
-        "status": {"enum": ["active", "stopped", "revoked"]},
-        "mode": {"enum": ["observe", "enforce"]},
-        "policy_version": {"type": "integer", "minimum": 1},
-        "allowed_actions": {"type": "array", "items": {"$ref": "#/$defs/action"}, "uniqueItems": true},
-        "blocked_actions": {"type": "array", "items": {"$ref": "#/$defs/action"}, "uniqueItems": true},
-        "spend_cap_daily_minor": {"$ref": "#/$defs/minor", "x-boundary": "daily"},
-        "max_per_transaction_minor": {"$ref": "#/$defs/optionalMinor", "x-boundary": "per_transaction"},
-        "action_limits_minor": {"type": "object", "additionalProperties": {"$ref": "#/$defs/minor"},
-                                "x-boundary": "per_action"},
-        "action_daily_caps_minor": {"type": "object", "additionalProperties": {"$ref": "#/$defs/minor"}},
-        "rate_limit_per_minute": {"oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]},
-        "approval_threshold_minor": {"$ref": "#/$defs/optionalMinor", "x-boundary": "approval"},
-        "redact_data_classes": {"type": "array", "items": {"$ref": "#/$defs/dataClass"}},
-        "block_data_classes": {"type": "array", "items": {"$ref": "#/$defs/dataClass"}},
-        "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
-        "timezone": {"type": "string"}
+        "status": {
+          "enum": [
+            "active",
+            "stopped",
+            "revoked"
+          ]
+        },
+        "mode": {
+          "enum": [
+            "observe",
+            "enforce"
+          ]
+        },
+        "policy_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "allowed_actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action"
+          },
+          "uniqueItems": true
+        },
+        "blocked_actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action"
+          },
+          "uniqueItems": true
+        },
+        "spend_cap_daily_minor": {
+          "$ref": "#/$defs/minor",
+          "x-boundary": "daily"
+        },
+        "max_per_transaction_minor": {
+          "$ref": "#/$defs/optionalMinor",
+          "x-boundary": "per_transaction"
+        },
+        "action_limits_minor": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/minor"
+          },
+          "x-boundary": "per_action"
+        },
+        "action_daily_caps_minor": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/minor"
+          }
+        },
+        "rate_limit_per_minute": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approval_threshold_minor": {
+          "$ref": "#/$defs/optionalMinor",
+          "x-boundary": "approval"
+        },
+        "redact_data_classes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dataClass"
+          }
+        },
+        "block_data_classes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dataClass"
+          }
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "timezone": {
+          "type": "string"
+        }
       }
     }
   }
