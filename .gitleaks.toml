@@ -1,0 +1,14 @@
+title = "veyrqun gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "supabase-secret-key"
+description = "Supabase secret API key"
+regex = '''sb_secret_[A-Za-z0-9_-]{20,}'''
+
+[[rules]]
+id = "render-api-key"
+description = "Render API key"
+regex = '''rnd_[A-Za-z0-9]{24,}'''

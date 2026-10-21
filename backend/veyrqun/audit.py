@@ -8,7 +8,6 @@ import hashlib
 import json
 import sqlite3
 import uuid
-from typing import Optional
 
 from .db import get_db, utcnow
 
@@ -37,7 +36,7 @@ def append_entry(
     action_type: str,
     amount: float,
     outcome: str,
-    rule_triggered: Optional[str],
+    rule_triggered: str | None,
     policy_version: int,
 ) -> dict:
     """Write one ledger entry inside the caller's transaction (caller holds write_lock)."""
@@ -67,9 +66,9 @@ def append_entry(
 
 
 def query_entries(
-    agent_id: Optional[str] = None,
-    outcome: Optional[str] = None,
-    action_type: Optional[str] = None,
+    agent_id: str | None = None,
+    outcome: str | None = None,
+    action_type: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:

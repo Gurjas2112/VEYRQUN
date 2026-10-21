@@ -32,8 +32,10 @@ def test_create_agent_and_duplicate(client):
 
 
 def test_input_validation(client):
-    assert client.post("/simulate/action", json={"agent_id": "travel_agent_01", "action_type": "flight_rebook", "amount": -5}).status_code == 422
-    assert client.post("/simulate/action", json={"agent_id": "nope", "action_type": "flight_rebook", "amount": 1}).status_code == 404
+    negative = {"agent_id": "travel_agent_01", "action_type": "flight_rebook", "amount": -5}
+    assert client.post("/simulate/action", json=negative).status_code == 422
+    unknown = {"agent_id": "nope", "action_type": "flight_rebook", "amount": 1}
+    assert client.post("/simulate/action", json=unknown).status_code == 404
     assert client.post("/agents", json={"agent_id": "X", "display_name": "x", "spend_cap_daily": 1}).status_code == 422
 
 

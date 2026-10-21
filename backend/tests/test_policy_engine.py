@@ -1,5 +1,4 @@
 import pytest
-
 from veyrqun.policy_engine import APPROVED, BLOCKED, evaluate_policy
 
 

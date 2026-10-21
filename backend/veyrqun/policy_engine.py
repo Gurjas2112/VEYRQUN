@@ -4,7 +4,6 @@ Kept pure (no DB, no clock) so it can be unit-tested exhaustively and benchmarke
 isolation; the service layer supplies fleet state and the agent's recent action count.
 """
 
-from typing import Optional, Tuple
 
 APPROVED = "approved"
 BLOCKED = "blocked"
@@ -28,7 +27,7 @@ def evaluate_policy(
     amount: float,
     fleet_stopped: bool = False,
     recent_actions: int = 0,
-) -> Tuple[str, Optional[str]]:
+) -> tuple[str, str | None]:
     if fleet_stopped:
         return BLOCKED, "fleet_emergency_stop_active"
     status = agent["status"]

@@ -2,7 +2,7 @@ import json
 import sqlite3
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from . import config
 
@@ -151,7 +151,7 @@ def get_db() -> sqlite3.Connection:
 
 
 def utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def row_to_agent(row: sqlite3.Row) -> dict:

@@ -5,7 +5,6 @@ import json
 import sqlite3
 import time
 from collections import defaultdict, deque
-from typing import Optional
 
 from . import audit
 from .db import get_db, insert_agent, insert_policy_version, row_to_agent, row_to_policy_version, write_lock
@@ -183,7 +182,7 @@ def _apply_policy(conn: sqlite3.Connection, agent_id: str, policy: dict, new_ver
     )
 
 
-def update_policy(agent_id: str, changes: dict, note: Optional[str] = None) -> tuple[dict, dict]:
+def update_policy(agent_id: str, changes: dict, note: str | None = None) -> tuple[dict, dict]:
     """`changes` holds only the fields the caller explicitly set (None clears an optional limit)."""
     with write_lock:
         conn = get_db()
@@ -228,7 +227,7 @@ def rollback_policy(agent_id: str, version: int) -> tuple[dict, dict]:
             conn.close()
 
 
-def _set_status(agent_id: str, new_status: str, event: str, allowed_from: tuple, reason: Optional[str]) -> tuple[dict, dict]:
+def _set_status(agent_id: str, new_status: str, event: str, allowed_from: tuple, reason: str | None) -> tuple[dict, dict]:
     with write_lock:
         conn = get_db()
         try:
@@ -246,7 +245,7 @@ def _set_status(agent_id: str, new_status: str, event: str, allowed_from: tuple,
             conn.close()
 
 
-def stop_agent(agent_id: str, reason: Optional[str] = None) -> tuple[dict, dict]:
+def stop_agent(agent_id: str, reason: str | None = None) -> tuple[dict, dict]:
     return _set_status(agent_id, "stopped", "emergency_stop", ("active", "stopped"), reason or "operator emergency stop")
 
 
@@ -254,7 +253,7 @@ def resume_agent(agent_id: str) -> tuple[dict, dict]:
     return _set_status(agent_id, "active", "resume", ("active", "stopped"), None)
 
 
-def revoke_agent(agent_id: str, reason: Optional[str] = None) -> tuple[dict, dict]:
+def revoke_agent(agent_id: str, reason: str | None = None) -> tuple[dict, dict]:
     """Revocation outlives fleet resume: only an explicit reinstate brings the agent back."""
     return _set_status(agent_id, "revoked", "revoke", ("active", "stopped", "revoked"), reason or "credentials revoked")
 

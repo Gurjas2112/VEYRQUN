@@ -1,5 +1,3 @@
-from typing import Optional
-
 from fastapi import APIRouter, Query
 
 from .. import audit
@@ -9,9 +7,9 @@ router = APIRouter(tags=["audit"])
 
 @router.get("/audit-log")
 def get_audit_log(
-    agent_id: Optional[str] = None,
-    outcome: Optional[str] = None,
-    action_type: Optional[str] = None,
+    agent_id: str | None = None,
+    outcome: str | None = None,
+    action_type: str | None = None,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):

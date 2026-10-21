@@ -1,0 +1,14 @@
+target-version = "py311"
+line-length = 140
+extend-exclude = ["frontend", "node_modules"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "BLE"]
+ignore = [
+  "S101",   # assert is idiomatic in pytest
+  "S311",   # random is used by the simulator, never for security
+  "BLE001", # the simulator deliberately catches-and-logs everything to stay alive
+]
+
+[lint.per-file-ignores]
+"*/tests/*" = ["S", "B"]

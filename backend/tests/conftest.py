@@ -7,7 +7,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["VEYRQUN_SIMULATOR"] = "0"
 
 from fastapi.testclient import TestClient  # noqa: E402
-
 from veyrqun import service  # noqa: E402
 from veyrqun.db import init_db  # noqa: E402
 from veyrqun.main import app  # noqa: E402

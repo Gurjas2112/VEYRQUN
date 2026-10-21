@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 from fastapi import WebSocket
 
 
@@ -7,7 +5,7 @@ class ConnectionManager:
     """Fans every ledger entry (plus the affected agent state) out to dashboard clients."""
 
     def __init__(self) -> None:
-        self.active_connections: List[WebSocket] = []
+        self.active_connections: list[WebSocket] = []
 
     async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -27,7 +25,7 @@ class ConnectionManager:
         for conn in disconnected:
             self.disconnect(conn)
 
-    async def publish(self, entry: dict, agents: Optional[List[dict]] = None) -> None:
+    async def publish(self, entry: dict, agents: list[dict] | None = None) -> None:
         message = dict(entry)
         if agents:
             message["_agents"] = agents

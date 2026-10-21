@@ -1,5 +1,3 @@
-from typing import Optional
-
 from fastapi import APIRouter
 
 from .. import service
@@ -22,7 +20,7 @@ async def fleet_emergency_stop():
 
 
 @router.post("/emergency-stop/{agent_id}")
-async def agent_emergency_stop(agent_id: str, body: Optional[StatusChange] = None):
+async def agent_emergency_stop(agent_id: str, body: StatusChange | None = None):
     entry, agent = service.stop_agent(agent_id, body.reason if body else None)
     await ws_manager.publish(entry, [agent])
     return {"message": f"Agent {agent_id} stopped"}
@@ -43,7 +41,7 @@ async def resume_agent(agent_id: str):
 
 
 @router.post("/agents/{agent_id}/revoke")
-async def revoke_agent(agent_id: str, body: Optional[StatusChange] = None):
+async def revoke_agent(agent_id: str, body: StatusChange | None = None):
     entry, agent = service.revoke_agent(agent_id, body.reason if body else None)
     await ws_manager.publish(entry, [agent])
     return {"message": f"Agent {agent_id} revoked", "agent": agent}
