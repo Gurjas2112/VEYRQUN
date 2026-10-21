@@ -62,6 +62,10 @@ services:
       REDIS_URL: redis://redis:6379/0
       ALLOWED_ORIGINS: http://localhost:5173
       VEYRQUN_ENV: dev
+      BUNDLE_SERVICE_TOKEN: ${GATEWAY_SERVICE_TOKEN:-dev-gateway-token}
+      OIDC_ISSUER: http://localhost:8180/realms/veyrqun
+      OIDC_DISCOVERY_URL: http://keycloak:8080/realms/veyrqun/.well-known/openid-configuration
+      OIDC_CLIENT_SECRET: ${KC_DASHBOARD_CLIENT_SECRET:-dev-dashboard-secret}
     ports:
       - "8000:8000"
     depends_on:
@@ -69,6 +73,36 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    environment:
+      CONTROL_PLANE_URL: http://control-plane:8000
+      GATEWAY_SERVICE_TOKEN: ${GATEWAY_SERVICE_TOKEN:-dev-gateway-token}
+      REDIS_URL: redis://redis:6379/0
+      UPSTREAM_LLM_URLS: http://mock-llm:9101
+      UPSTREAM_MCP_URL: http://mock-mcp:9102/mcp
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      control-plane:
+        condition: service_started
+
+  mock-llm:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile.mocks
+    environment: { MOCK: llm, PORT: "9101" }
+
+  mock-mcp:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile.mocks
+    environment: { MOCK: mcp, PORT: "9102" }
 
   frontend:
     build:

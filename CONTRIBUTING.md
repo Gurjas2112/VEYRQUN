@@ -2,6 +2,10 @@
 
 ## Setup
 
+Toolchain: **Python 3.11+** and **Node 22 LTS** (npm 10, see `.nvmrc`). The lockfiles are generated with
+the same npm that CI and the production images use; newer npm majors resolve optional platform packages
+differently, so use `npm install` (not `npm ci`) if you develop on a newer Node.
+
 ```bash
 pip install -r requirements-dev.txt
 npm --prefix frontend install
@@ -11,12 +15,14 @@ cp .env.example .env          # fill in local values; .env is git-ignored
 ## Tests
 
 ```bash
-python -m pytest                       # control-plane tests
+python -m pytest                       # control-plane tests (needs: docker compose up -d postgres redis)
+npm --prefix gateway test              # gateway unit + failure-contract tests (needs Redis)
+python -m pytest e2e                   # Keycloak login flows + control-plane/gateway interop
 npm --prefix frontend run lint
 npm --prefix frontend run build
 ```
 
-Later phases add `opa test policies/ -v`, `npm --prefix gateway test`, Playwright end-to-end tests, and `helm lint`.
+Policy: `opa test policies/ -v`, `python scripts/build_policy.py --check`, `python scripts/gen_policy_tests.py --check`.
 CI runs all of them on every push and pull request.
 
 ## Commits
