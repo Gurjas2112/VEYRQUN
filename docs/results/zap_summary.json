@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-10-21T19:49:59.556185+00:00",
+  "tool": "OWASP ZAP 2.17.0 zap-api-scan (OpenAPI)",
+  "targets": {
+    "localhost:8180": {
+      "by_risk": {
+        "Medium": 5,
+        "Low": 9,
+        "Informational": 2
+      },
+      "alerts": [
+        "Informational: Non-Storable Content",
+        "Informational: Session Management Response Identified",
+        "Low: Cookie No HttpOnly Flag",
+        "Low: Cookie with SameSite Attribute None",
+        "Low: Cross-Origin-Embedder-Policy Header Missing or Invalid",
+        "Low: Cross-Origin-Opener-Policy Header Missing or Invalid",
+        "Low: Cross-Origin-Resource-Policy Header Missing or Invalid",
+        "Low: Permissions Policy Header Not Set",
+        "Low: Unexpected Content-Type was returned",
+        "Medium: Absence of Anti-CSRF Tokens",
+        "Medium: CSP: Failure to Define Directive with No Fallback",
+        "Medium: CSP: Wildcard Directive",
+        "Medium: CSP: script-src unsafe-inline",
+        "Medium: CSP: style-src unsafe-inline"
+      ]
+    },
+    "localhost:8000": {
+      "by_risk": {
+        "Low": 13,
+        "Informational": 181
+      },
+      "alerts": [
+        "Informational: A Client Error response code was returned by the server",
+        "Informational: Non-Storable Content",
+        "Informational: Session Management Response Identified",
+        "Informational: Storable and Cacheable Content",
+        "Low: Cross-Origin-Resource-Policy Header Missing or Invalid",
+        "Low: Timestamp Disclosure - Unix",
+        "Low: Unexpected Content-Type was returned"
+      ]
+    }
+  }
+}

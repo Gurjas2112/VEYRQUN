@@ -191,6 +191,7 @@ def test_security_headers_present(anon_client):
     assert h["x-content-type-options"] == "nosniff" and h["x-frame-options"] == "DENY"
     assert "frame-ancestors 'none'" in h["content-security-policy"]
     assert h["referrer-policy"] == "strict-origin-when-cross-origin"
+    assert h["cross-origin-resource-policy"] == "same-site"
     assert "strict-transport-security" in h  # https base_url
 
 

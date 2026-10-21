@@ -15,6 +15,8 @@ API_HEADERS = {
     # The API only serves JSON (plus Swagger UI in dev); nothing may frame it.
     "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
     "Cross-Origin-Opener-Policy": "same-origin",
+    # Gateways/agents fetch JWKS and bundles server-side; browsers on other sites have no reason to.
+    "Cross-Origin-Resource-Policy": "same-site",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 }
 DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
