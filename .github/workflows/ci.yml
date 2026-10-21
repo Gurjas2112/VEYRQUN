@@ -84,6 +84,51 @@ jobs:
       - name: Tests (Postgres + Redis integration, 10k-case Rego/Lua parity, migration validation)
         run: python -m pytest -q
 
+  semgrep:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Semgrep (python, security-audit, secrets)
+        run: >
+          semgrep scan --config p/python --config p/security-audit --config p/secrets --metrics=off --error
+          --exclude frontend/node_modules --exclude tools --exclude app_screenshots_screen_recording
+
+  e2e-identity:
+    runs-on: ubuntu-latest
+    needs: [control-plane]
+    env:
+      KC_DASHBOARD_CLIENT_SECRET: ci-dashboard-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt && python -m playwright install --with-deps chromium
+      - name: Start Postgres, Redis and Keycloak (realm imported from deploy/keycloak)
+        run: |
+          docker compose up -d postgres redis keycloak
+          for i in $(seq 1 90); do curl -sf localhost:8180/realms/veyrqun/.well-known/openid-configuration && break; sleep 2; done
+      - name: Seed dev users (random passwords + TOTP, never committed)
+        run: python deploy/keycloak/seed_dev_users.py --out .dev-users.json
+      - name: Playwright e2e (login with password + TOTP, invites, MFA enforcement, sandbox, logout)
+        run: python -m pytest e2e -q
+      - name: OWASP ZAP API scan (OpenAPI-driven) against the running control plane
+        run: |
+          cd control-plane
+          DATABASE_URL=postgresql+psycopg://veyrqun_app:veyrqun_app_dev@localhost:55432/veyrqun_e2e           REDIS_URL=redis://localhost:56379/12 VEYRQUN_SIMULATOR=0 OIDC_ISSUER=http://localhost:8180/realms/veyrqun             nohup python -m uvicorn app:app --port 8000 > ../zap-target.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf localhost:8000/health && break; sleep 1; done
+          docker run --rm --network host -v "$PWD/..:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable             zap-api-scan.py -t http://localhost:8000/openapi.json -f openapi -I -r zap-report.html
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-and-zap-reports
+          path: |
+            zap-report.html
+            e2e/control-plane.log
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

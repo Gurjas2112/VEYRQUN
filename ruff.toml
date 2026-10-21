@@ -10,10 +10,17 @@ ignore = [
   "BLE001", # the simulator deliberately catches-and-logs everything to stay alive
 ]
 
+[lint.flake8-bugbear]
+# FastAPI's dependency-injection markers are designed to be used as parameter defaults.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Form", "fastapi.Body", "veyrqun.auth.deps.require"]
+
 [lint.isort]
-known-first-party = ["veyrqun", "conftest", "migrate_sqlite_to_pg", "validate_migration", "policy_parity"]
+known-first-party = ["veyrqun", "conftest", "fake_idp", "migrate_sqlite_to_pg", "validate_migration", "policy_parity", "verify_export"]
 
 [lint.per-file-ignores]
 "*/tests/*" = ["S", "B"]
 # Operator tooling run by hand/CI with fixed argument lists (git, opa).
 "scripts/*" = ["S603", "S607"]
+"e2e/*" = ["S", "B"]
+# Migrations build DDL from fixed, in-file table lists (no user input).
+"control-plane/migrations/*" = ["S608"]

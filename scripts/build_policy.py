@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "policies" / "dist" / "policy.wasm"
 ENTRYPOINT = "veyrqun/authz/decision"
 OPA_VERSION = os.environ.get("OPA_VERSION", "1.21.3")
+if not re.fullmatch(r"\d+\.\d+\.\d+", OPA_VERSION):  # it becomes part of a docker image reference
+    sys.exit(f"invalid OPA_VERSION {OPA_VERSION!r}")
 BUILD_ARGS = ["build", "-t", "wasm", "-e", ENTRYPOINT, "--ignore", "*_test.rego", "policies/veyrqun"]
 
 
@@ -47,7 +50,8 @@ def build() -> bytes:
                    f"openpolicyagent/opa:{OPA_VERSION}-static", *BUILD_ARGS, "-o", rel_out]
         else:
             cmd = [_local_opa(), *BUILD_ARGS, "-o", rel_out]
-        subprocess.run(cmd, check=True, cwd=ROOT)
+        # Developer tooling: OPA_BIN/OPA_VERSION are the developer's own settings (version validated above).
+        subprocess.run(cmd, check=True, cwd=ROOT)  # nosemgrep: dangerous-subprocess-use-tainted-env-args
         with tarfile.open(ROOT / rel_out, "r:gz") as tar:
             member = tar.extractfile("/policy.wasm")
             assert member is not None
