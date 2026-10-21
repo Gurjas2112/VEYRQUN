@@ -64,3 +64,6 @@ Thumbs.db
 tools/bin/
 .mypy_cache/
 .ruff_cache/
+
+# The compiled policy is a committed, CI-verified artifact (see docs/adr/0002).
+!policies/dist/
