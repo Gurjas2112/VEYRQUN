@@ -120,13 +120,14 @@ jobs:
           cd control-plane
           DATABASE_URL=postgresql+psycopg://veyrqun_app:veyrqun_app_dev@localhost:55432/veyrqun_e2e           REDIS_URL=redis://localhost:56379/12 VEYRQUN_SIMULATOR=0 OIDC_ISSUER=http://localhost:8180/realms/veyrqun             nohup python -m uvicorn app:app --port 8000 > ../zap-target.log 2>&1 &
           for i in $(seq 1 30); do curl -sf localhost:8000/health && break; sleep 1; done
-          docker run --rm --network host -v "$PWD/..:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable             zap-api-scan.py -t http://localhost:8000/openapi.json -f openapi -I -r zap-report.html
+          docker run --rm --network host --user root -v "$PWD/..:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable             zap-api-scan.py -t http://localhost:8000/openapi.json -f openapi -I -r zap-report.html -J zap-report.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: e2e-and-zap-reports
           path: |
             zap-report.html
+            zap-report.json
             e2e/control-plane.log
 
   frontend:
