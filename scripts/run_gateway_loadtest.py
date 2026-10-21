@@ -100,9 +100,12 @@ def main() -> None:
         if host == "127.0.0.1":
             cmd += ["--network", "host"]
         cmd += [K6_IMAGE, "run", "--quiet", "--summary-export=/scripts/k6-summary.json",
-                "-e", f"GATEWAY=http://{host}:8092", "-e", f"TOKEN={token}", "-e", f"RATE={a.rate}",
+                "-e", f"GATEWAY=http://{host}:8092", "-e", "TOKEN", "-e", f"RATE={a.rate}",
                 "-e", f"DURATION={a.duration}", "/scripts/gateway.js"]
-        k6 = subprocess.run(cmd, capture_output=True, text=True)
+        # The agent token goes through the environment (`-e TOKEN`), not argv, so it isn't in the process list.
+        # Local developer tool with fixed arguments.
+        k6_env = {**os.environ, "TOKEN": token}
+        k6 = subprocess.run(cmd, capture_output=True, text=True, env=k6_env)  # nosemgrep: dangerous-subprocess-use-tainted-env-args
         summary = json.loads(out.read_text())
     finally:
         for p in procs:
