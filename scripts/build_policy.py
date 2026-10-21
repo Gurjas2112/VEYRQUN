@@ -3,11 +3,16 @@ control plane evaluate in-process.
 
 Usage:  python scripts/build_policy.py [--check]
 --check fails (exit 1) if the committed policies/dist/policy.wasm is stale, which CI uses.
+
+OPA embeds the source file path in the module, so the build must see the same relative POSIX path
+on every machine. On Linux/macOS a local `opa` is used from the repo root; on Windows (backslash
+paths) the official OPA container is used instead, so the committed bytes match CI exactly.
 """
 
 import argparse
 import hashlib
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -18,27 +23,32 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "policies" / "dist" / "policy.wasm"
 ENTRYPOINT = "veyrqun/authz/decision"
+OPA_VERSION = os.environ.get("OPA_VERSION", "1.21.3")
+BUILD_ARGS = ["build", "-t", "wasm", "-e", ENTRYPOINT, "--ignore", "*_test.rego", "policies/veyrqun"]
 
 
-def opa_binary() -> str:
-    for candidate in (os.environ.get("OPA_BIN"), str(ROOT / "tools" / "bin" / "opa.exe"), str(ROOT / "tools" / "bin" / "opa")):
+def _use_container() -> bool:
+    mode = os.environ.get("OPA_BUILD", "auto")
+    return mode == "docker" or (mode == "auto" and platform.system() == "Windows")
+
+
+def _local_opa() -> str:
+    for candidate in (os.environ.get("OPA_BIN"), shutil.which("opa"), str(ROOT / "tools" / "bin" / "opa")):
         if candidate and Path(candidate).is_file():
             return candidate
-    found = shutil.which("opa")
-    if not found:
-        sys.exit("opa not found: set OPA_BIN or put it on PATH")
-    return found
+    sys.exit("opa not found: install it, set OPA_BIN, or set OPA_BUILD=docker")
 
 
 def build() -> bytes:
-    with tempfile.TemporaryDirectory() as tmp:
-        out = Path(tmp) / "bundle.tar.gz"
-        subprocess.run(
-            [opa_binary(), "build", "-t", "wasm", "-e", ENTRYPOINT, "--ignore", "*_test.rego",
-             "-o", str(out), str(ROOT / "policies" / "veyrqun")],
-            check=True,
-        )
-        with tarfile.open(out, "r:gz") as tar:
+    with tempfile.TemporaryDirectory(dir=ROOT) as tmp:
+        rel_out = Path(tmp).relative_to(ROOT).as_posix() + "/bundle.tar.gz"
+        if _use_container():
+            cmd = ["docker", "run", "--rm", "-v", f"{ROOT}:/src", "-w", "/src",
+                   f"openpolicyagent/opa:{OPA_VERSION}-static", *BUILD_ARGS, "-o", rel_out]
+        else:
+            cmd = [_local_opa(), *BUILD_ARGS, "-o", rel_out]
+        subprocess.run(cmd, check=True, cwd=ROOT)
+        with tarfile.open(ROOT / rel_out, "r:gz") as tar:
             member = tar.extractfile("/policy.wasm")
             assert member is not None
             return member.read()
