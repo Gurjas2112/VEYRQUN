@@ -14,7 +14,8 @@
 [![Policy eval p99](https://img.shields.io/badge/policy%20eval%20p99-~1%20%C2%B5s-E8A33D?style=flat-square)](docs/Testing.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)](LICENSE)
 
-*Built for the American Express CodeStreet hackathon theme: “Governance Layer for Financial Agents”*
+*Started from [Aegis](https://github.com/infyier/aegis-governance) by **infyier** (American Express CodeStreet 2026, MIT).
+v2 refactor and v3 gateway and platform work by **Gurjas Singh Gandhi**. See [CHANGELOG.md](CHANGELOG.md) for exactly what was inherited and what was added.*
 
 ![VEYRQUN live demo](app_screenshots_screen_recording/veyrqun_demo_preview.gif)
 
