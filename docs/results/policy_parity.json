@@ -1,0 +1,32 @@
+{
+  "generated_at": "2026-10-21T18:39:35.366361+00:00",
+  "seed": 20261022,
+  "cases": 10000,
+  "mismatches": 0,
+  "first_mismatches": [],
+  "outcome_distribution": {
+    "allow": 444,
+    "block": 9110,
+    "redact": 75,
+    "require_approval": 371
+  },
+  "rule_distribution": {
+    "transaction_limit_exceeded": 2026,
+    "action_not_in_allowlist": 1849,
+    "action_not_permitted": 930,
+    "injection_suspected": 883,
+    "spend_cap_exceeded": 872,
+    "rate_limit_exceeded": 814,
+    "emergency_stop_active": 564,
+    "data_class_not_permitted": 462,
+    "None": 444,
+    "agent_revoked": 399,
+    "approval_required": 371,
+    "fleet_emergency_stop_active": 234,
+    "data_class_redacted": 75,
+    "action_spend_cap_exceeded": 56,
+    "unknown_agent": 21
+  },
+  "seconds": 4.52,
+  "method": "policy.wasm (Python wasmtime host) + reserve.lua (real Redis) vs Python oracle"
+}
