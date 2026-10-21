@@ -1,0 +1,12 @@
+# Deterministic offline upstreams (mock LLM + mock bank-core MCP) for demos and CI. Synthetic data only.
+ARG NODE_IMAGE=node:22-alpine@sha256:ce8d97f7cfc7c5386421eb932df20a29df99b1a7f469f6157d5c9956702ffadc
+FROM ${NODE_IMAGE}
+WORKDIR /app
+COPY gateway/package.json gateway/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY gateway/tsconfig.json ./
+COPY gateway/src ./src
+USER node
+# MOCK=llm|mcp
+ENV MOCK=llm
+CMD ["sh", "-c", "if [ \"$MOCK\" = mcp ]; then exec npx tsx src/mock/bankcore-mcp.ts; else exec npx tsx src/mock/llm.ts; fi"]
