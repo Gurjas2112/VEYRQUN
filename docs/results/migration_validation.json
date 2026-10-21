@@ -1,0 +1,98 @@
+{
+  "generated_at": "2026-10-21T18:43:42.195495+00:00",
+  "source": "v2.db",
+  "workspace": "legacy-v2",
+  "run_id": "01a15fc6-b65d-756c-adc5-af14373b3b2e",
+  "passed": true,
+  "checks_total": 15,
+  "checks_failed": 0,
+  "precision_anomalies_reported_by_migrator": 0,
+  "checks": [
+    {
+      "check": "row_count.agents",
+      "passed": true,
+      "source": 5,
+      "target": 5
+    },
+    {
+      "check": "row_count.policy_versions",
+      "passed": true,
+      "source": 6,
+      "target": 6
+    },
+    {
+      "check": "row_count.audit_events",
+      "passed": true,
+      "source": 304,
+      "target": 304
+    },
+    {
+      "check": "id_map.agents_complete",
+      "passed": true,
+      "missing": []
+    },
+    {
+      "check": "id_map.targets_exist",
+      "passed": true
+    },
+    {
+      "check": "agents.fields_equal",
+      "passed": true,
+      "diffs": []
+    },
+    {
+      "check": "policy_versions.equal",
+      "passed": true,
+      "diffs": []
+    },
+    {
+      "check": "audit.amount_total_exact",
+      "passed": true,
+      "source": "125555.23",
+      "target": "125555.23"
+    },
+    {
+      "check": "audit.outcome_distribution",
+      "passed": true,
+      "source": {
+        "approved": 34,
+        "blocked": 266,
+        "executed": 4
+      },
+      "target": {
+        "approved": 34,
+        "blocked": 266,
+        "executed": 4
+      }
+    },
+    {
+      "check": "audit.raw_amounts_preserved",
+      "passed": true
+    },
+    {
+      "check": "legacy_chain.valid_in_target",
+      "passed": true,
+      "entries": 304,
+      "head_hash": "5d5bf7fc9853500dad37fdadf8d09cf48d4a131774ec3256cce9833a8cbbba2d"
+    },
+    {
+      "check": "legacy_chain.head_matches_source",
+      "passed": true
+    },
+    {
+      "check": "v3_anchor.present",
+      "passed": true,
+      "anchor": "v2-head:5d5bf7fc9853500dad37fdadf8d09cf48d4a131774ec3256cce9833a8cbbba2d"
+    },
+    {
+      "check": "v3_chain.valid",
+      "passed": true,
+      "entries": 1
+    },
+    {
+      "check": "domain_sweep",
+      "passed": true,
+      "violations": []
+    }
+  ]
+}
