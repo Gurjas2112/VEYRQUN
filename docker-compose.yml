@@ -33,6 +33,25 @@ services:
       timeout: 3s
       retries: 20
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    command: ["start-dev", "--import-realm", "--health-enabled=true"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin            # dev only
+      KC_DASHBOARD_CLIENT_SECRET: ${KC_DASHBOARD_CLIENT_SECRET:-dev-dashboard-secret}
+      KC_HOSTNAME: http://localhost:8180            # issuer the browser and the control plane agree on
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"       # containers may reach it as http://keycloak:8080
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./deploy/keycloak/realm-veyrqun.json:/opt/keycloak/data/import/realm-veyrqun.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\r\n\r\n' >&3 && grep -q UP <&3"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+
   control-plane:
     build:
       context: .

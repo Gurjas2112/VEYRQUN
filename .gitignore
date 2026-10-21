@@ -67,3 +67,6 @@ tools/bin/
 
 # The compiled policy is a committed, CI-verified artifact (see docs/adr/0002).
 !policies/dist/
+
+# local dev identities (generated passwords/TOTP secrets)
+.dev-users.json
