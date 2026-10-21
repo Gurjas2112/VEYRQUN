@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, AlertTriangle, Info, RefreshCw } from 'lucide-react';
-import { API_BASE, api } from './api';
+import { API_BASE, api, isGo } from './api';
 import useLiveFeed from './hooks/useLiveFeed';
 import Header from './components/Header';
 import ScenarioPanel from './components/ScenarioPanel';
@@ -126,8 +126,10 @@ export default function App() {
     api('/simulate/action', { method: 'POST', body: { agent_id, action_type, amount } });
 
   const describe = (entry) =>
-    entry.outcome === 'approved'
-      ? `APPROVED · ${entry.agent_id} · ${entry.action_type} $${entry.amount.toFixed(2)}`
+    entry.outcome === 'require_approval'
+      ? `HELD FOR APPROVAL · ${entry.agent_id} · ${entry.action_type} $${entry.amount}`
+      : isGo(entry.outcome)
+      ? `ALLOWED · ${entry.agent_id} · ${entry.action_type} $${entry.amount}`
       : `BLOCKED · ${entry.agent_id} · ${entry.action_type} → ${entry.rule_triggered}`;
 
   const handleFleetStop = async () => {
@@ -152,7 +154,7 @@ export default function App() {
       } else if (id === 'spend_cap') {
         for (let i = 0; i < 5; i++) {
           const entry = await run(() => attempt('travel_agent_01', 'flight_rebook', 550));
-          if (!entry || entry.outcome === 'blocked') {
+          if (!entry || entry.outcome === 'block') {
             if (entry) flash(describe(entry));
             break;
           }

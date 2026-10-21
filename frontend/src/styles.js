@@ -5,7 +5,9 @@ export const STATUS_STYLES = {
 };
 
 export const OUTCOME_STYLES = {
-  approved: 'bg-[#4C9A6A]/20 text-[#4C9A6A]',
-  blocked: 'bg-[#C1443B]/20 text-[#C1443B]',
+  allow: 'bg-[#4C9A6A]/20 text-[#4C9A6A]',
+  redact: 'bg-[#4C9A6A]/20 text-[#4C9A6A]',
+  require_approval: 'bg-[#E8A33D]/20 text-[#E8A33D]',
+  block: 'bg-[#C1443B]/20 text-[#C1443B]',
   executed: 'bg-[#E8A33D]/20 text-[#E8A33D]',
 };

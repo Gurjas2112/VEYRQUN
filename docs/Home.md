@@ -30,4 +30,4 @@ streamed to an operator dashboard — with per-agent revocation and a fleet-wide
 | Dynamic spend caps enforced in real time | daily cap + per-transaction + per-action caps + rate limits, atomically enforced in `service.attempt_action` |
 | Revocation + emergency stop (one agent or whole fleet) | `/agents/{id}/revoke`, `/emergency-stop/{id}`, `/emergency-stop` |
 | Operator dashboard (policies, activity, audit) | `frontend/src/` |
-| Test & optimise accuracy, latency, auditability | `backend/tests/` (45 tests), `backend/benchmark.py`, `/metrics` |
+| Test & optimise accuracy, latency, auditability | `control-plane/tests/` (45 tests), `control-plane/benchmark.py`, `/metrics` |

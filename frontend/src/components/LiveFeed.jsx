@@ -3,8 +3,10 @@ import { isOperatorEvent } from '../api';
 import { OUTCOME_STYLES } from '../styles';
 
 const CARD_STYLES = {
-  approved: 'bg-[#121A15] border-[#4C9A6A]/30',
-  blocked: 'bg-[#1F1314] border-[#C1443B]/30',
+  allow: 'bg-[#121A15] border-[#4C9A6A]/30',
+  redact: 'bg-[#121A15] border-[#4C9A6A]/30',
+  require_approval: 'bg-[#1C1810] border-[#E8A33D]/30',
+  block: 'bg-[#1F1314] border-[#C1443B]/30',
   executed: 'bg-[#1C1810] border-[#E8A33D]/30',
 };
 
@@ -40,7 +42,7 @@ export default function LiveFeed({ entries, paused, onHoverChange }) {
               </div>
               <div className="flex justify-between text-[#8A93A3] text-[11px]">
                 <span>{entry.action_type}</span>
-                {!isOperatorEvent(entry) && <span>${entry.amount.toFixed(2)}</span>}
+                {!isOperatorEvent(entry) && <span>${entry.amount}</span>}
               </div>
               <div className="text-[10px] text-[#8A93A3] mt-0.5">
                 {entry.timestamp?.split('T')[1]?.slice(0, 8)} UTC · policy v{entry.policy_version}

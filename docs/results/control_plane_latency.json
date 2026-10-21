@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-10-21T18:49:00.002567+00:00",
+  "host": {
+    "python": "3.12.0",
+    "machine": "AMD64",
+    "system": "Windows"
+  },
+  "policy_eval_wasm_python": {
+    "samples": 5000,
+    "p50_us": 140.0,
+    "p95_us": 153.6,
+    "p99_us": 209.6
+  },
+  "full_decision_eval_redis_postgres": {
+    "samples": 1000,
+    "p50_us": 5317.7,
+    "p95_us": 6991.9,
+    "p99_us": 8014.9
+  },
+  "audit_verify": {
+    "entries": 1003,
+    "valid": true,
+    "total_ms": 32.4
+  },
+  "note": "Control-plane (legacy) path. Policy eval = compiled Rego via the Python wasmtime host. Full decision = eval + Redis Lua reservation + Postgres hash-chained append (one transaction)."
+}

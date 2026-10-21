@@ -67,8 +67,10 @@ export default function AuditLog({ logs, agents, filters, onFilterChange, onLoad
             className="bg-[#0E1115] border border-[#2D333B] text-[#E6E8EB] rounded-lg px-2.5 py-1"
           >
             <option value="all">All Outcomes</option>
-            <option value="approved">Approved</option>
-            <option value="blocked">Blocked</option>
+            <option value="allow">Allowed</option>
+            <option value="redact">Redacted</option>
+            <option value="require_approval">Held for approval</option>
+            <option value="block">Blocked</option>
             <option value="executed">Operator actions</option>
           </select>
         </label>
@@ -94,7 +96,7 @@ export default function AuditLog({ logs, agents, filters, onFilterChange, onLoad
                   <td className="p-3 text-[#8A93A3] text-[11px]">{log.timestamp.split('T')[1]?.replace('Z', '').slice(0, 12)}</td>
                   <td className="p-3 font-semibold">{log.agent_id}</td>
                   <td className={`p-3 ${isOperatorEvent(log) ? 'text-[#E8A33D]' : ''}`}>{log.action_type}</td>
-                  <td className="p-3">{isOperatorEvent(log) ? '—' : `$${log.amount.toFixed(2)}`}</td>
+                  <td className="p-3">{isOperatorEvent(log) ? '—' : `$${log.amount}`}</td>
                   <td className="p-3">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${OUTCOME_STYLES[log.outcome]}`}>{log.outcome}</span>
                   </td>

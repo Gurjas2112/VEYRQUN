@@ -1,6 +1,6 @@
 # Data Models
 
-SQLite file `backend/veyrqun.db` (override with `VEYRQUN_DB_FILE`). Created and seeded on startup; older databases
+SQLite file `control-plane/veyrqun.db` (override with `VEYRQUN_DB_FILE`). Created and seeded on startup; older databases
 are migrated in place (new columns added).
 
 ## `agents`

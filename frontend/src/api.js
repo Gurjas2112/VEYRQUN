@@ -17,4 +17,6 @@ export async function api(path, { method = 'GET', body } = {}) {
 
 export const isOperatorEvent = (entry) => entry.action_type?.startsWith('operator:');
 
-export const formatMoney = (value) => (value === null || value === undefined ? '—' : `$${Number(value).toFixed(2)}`);
+// Amounts arrive as exact decimal strings ("1500.00"); they are only formatted here, never computed with.
+export const formatMoney = (value) => (value === null || value === undefined ? '—' : `$${value}`);
+export const isGo = (outcome) => outcome === 'allow' || outcome === 'redact';

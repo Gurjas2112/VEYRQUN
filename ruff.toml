@@ -10,5 +10,10 @@ ignore = [
   "BLE001", # the simulator deliberately catches-and-logs everything to stay alive
 ]
 
+[lint.isort]
+known-first-party = ["veyrqun", "conftest", "migrate_sqlite_to_pg", "validate_migration", "policy_parity"]
+
 [lint.per-file-ignores]
 "*/tests/*" = ["S", "B"]
+# Operator tooling run by hand/CI with fixed argument lists (git, opa).
+"scripts/*" = ["S603", "S607"]

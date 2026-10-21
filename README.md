@@ -238,7 +238,7 @@ npm start            # or ./start.sh — runs backend + frontend together
 ```bash
 # terminal 1 — API
 pip install -r requirements.txt
-python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000
+python -m uvicorn --app-dir control-plane app:app --host 0.0.0.0 --port 8000
 
 # terminal 2 — dashboard
 cd frontend && npm install && npm run dev
@@ -273,7 +273,7 @@ curl -s localhost:8000/audit-log/verify
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `VEYRQUN_DB_FILE` | `backend/veyrqun.db` | SQLite database path |
+| `VEYRQUN_DB_FILE` | `control-plane/veyrqun.db` | SQLite database path |
 | `VEYRQUN_SIMULATOR` | `1` | Set `0` to disable the background agent simulator |
 | `ALLOWED_ORIGINS` | `*` | Comma-separated CORS origins |
 | `VITE_API_BASE_URL` | `http://localhost:8000` | Dashboard → API URL (build time) |
@@ -307,7 +307,7 @@ Full request/response examples: [docs/API Reference.md](docs/API%20Reference.md)
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest                 # 45 tests
-python backend/benchmark.py      # latency table
+python control-plane/benchmark.py      # latency table
 ```
 
 | Dimension | What is verified |
@@ -337,7 +337,7 @@ Switching to pooled per-thread connections, with WAL and `synchronous=NORMAL`, c
 
 ```text
 VEYRQUN/
-├── backend/
+├── control-plane/
 │   ├── app.py                    # entry shim (uvicorn app:app / backend.app:app)
 │   ├── benchmark.py              # latency benchmark
 │   ├── Dockerfile

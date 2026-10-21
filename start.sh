@@ -4,7 +4,7 @@
 echo "Starting VEYRQUN Governance Control Tower..."
 
 # Start FastAPI backend in background
-python3 -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 &
+python3 -m uvicorn --app-dir control-plane app:app --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
 
 # Start Vite React frontend in background

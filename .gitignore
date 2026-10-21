@@ -32,8 +32,8 @@ frontend/build/
 *.db
 *.sqlite
 *.sqlite3
-backend/governance.db
-backend/veyrqun.db
+control-plane/governance.db
+control-plane/veyrqun.db
 *.db-wal
 *.db-shm
 .pytest_cache/
@@ -59,3 +59,8 @@ Thumbs.db
 .gemini/
 .claude/
 .codex/
+
+# local tooling & caches
+tools/bin/
+.mypy_cache/
+.ruff_cache/

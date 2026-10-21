@@ -5,9 +5,9 @@ Python 3.11+, FastAPI, SQLite. No external services.
 ## Layout
 
 ```
-backend/
-├── app.py                 # entry shim: `uvicorn app:app` or `uvicorn backend.app:app`
-├── benchmark.py           # latency benchmark (python backend/benchmark.py [n])
+control-plane/
+├── app.py                 # entry shim: `uvicorn app:app` or `uvicorn --app-dir control-plane app:app`
+├── benchmark.py           # latency benchmark (python control-plane/benchmark.py [n])
 ├── veyrqun/
 │   ├── main.py            # FastAPI app, lifespan (init DB, start simulator), error handler
 │   ├── config.py          # env-driven settings (DB path, CORS, simulator on/off)

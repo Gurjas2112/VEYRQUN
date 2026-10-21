@@ -1,0 +1,11 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8
+pydantic-settings>=2.4
+sqlalchemy>=2.0.30
+psycopg[binary]>=3.2
+alembic>=1.13
+redis>=5.0
+wasmtime>=30
+pyjwt[crypto]>=2.9
+cryptography>=43

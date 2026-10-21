@@ -1,34 +1,64 @@
-version: '3.8'
+name: veyrqun
+
+# `docker compose up -d postgres redis` gives the data services for local development and tests.
+# `docker compose up --build` runs the whole stack. Later phases add the gateway, audit writer,
+# Keycloak and observability under profiles.
 
 services:
-  backend:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: veyrqun_owner
+      POSTGRES_PASSWORD: veyrqun_owner_dev   # dev only; real deployments read secrets from the platform
+      POSTGRES_DB: veyrqun
+    ports:
+      - "55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U veyrqun_owner -d veyrqun"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  control-plane:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: veyrqun-backend
+      context: .
+      dockerfile: control-plane/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://veyrqun_app:veyrqun_app_dev@postgres:5432/veyrqun
+      MIGRATION_DATABASE_URL: postgresql+psycopg://veyrqun_owner:veyrqun_owner_dev@postgres:5432/veyrqun
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_ORIGINS: http://localhost:5173
+      VEYRQUN_ENV: dev
     ports:
       - "8000:8000"
-    environment:
-      - ALLOWED_ORIGINS=*
-      - VEYRQUN_DB_FILE=/data/veyrqun.db
-    volumes:
-      - veyrqun-data:/data
-    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: veyrqun-frontend
     ports:
       - "5173:80"
     depends_on:
-      - backend
-    restart: unless-stopped
+      - control-plane
 
 volumes:
-  veyrqun-data:
-
-networks:
-  default:
-    name: veyrqun-network
+  pgdata:

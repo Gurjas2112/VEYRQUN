@@ -5,7 +5,7 @@ Recorded walkthrough: [`app_screenshots_screen_recording/veyrqun_demo.mp4`](../a
 ## 0. Setup
 
 ```bash
-python -m uvicorn backend.app:app --port 8000     # terminal 1
+python -m uvicorn --app-dir control-plane app:app --port 8000     # terminal 1
 cd frontend && npm run dev                         # terminal 2
 ```
 

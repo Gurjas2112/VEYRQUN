@@ -3,7 +3,7 @@
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest            # 45 tests, ~1–4 s
-python backend/benchmark.py # latency table
+python control-plane/benchmark.py # latency table
 ```
 
 Every test runs against a fresh temporary database with the simulator disabled.
