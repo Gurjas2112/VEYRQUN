@@ -7,16 +7,28 @@ export interface ModelPrice {
   output_per_mtok: number;
 }
 
+export interface ToolCall {
+  id?: string;
+  type?: string;
+  index?: number;
+  function?: { name?: string; arguments?: string };
+}
+
 export interface ChatMessage {
   role: string;
   content?: unknown;
+  tool_calls?: ToolCall[];
 }
+
+/** Arguments of an assistant message's tool calls: model output, classified like any other content. */
+export const toolCallText = (calls: ToolCall[] | undefined): string =>
+  (Array.isArray(calls) ? calls : []).map((c) => c?.function?.arguments ?? "").filter(Boolean).join("\n");
 
 export function messageText(messages: ChatMessage[]): string {
   return messages
     .map((m) => (typeof m.content === "string" ? m.content : Array.isArray(m.content)
       ? m.content.map((p) => (p && typeof p === "object" && "text" in p ? String((p as { text: unknown }).text) : "")).join(" ")
-      : ""))
+      : "") + (m.tool_calls ? `\n${toolCallText(m.tool_calls)}` : ""))
     .join("\n");
 }
 
