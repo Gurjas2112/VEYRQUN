@@ -92,6 +92,11 @@ export class BundleStore {
     return [...this.bundles.keys()];
   }
 
+  /** Revision of the bundle currently enforced for a workspace (null before the first load). */
+  revision(ws: string): number | null {
+    return this.bundles.get(ws)?.revision ?? null;
+  }
+
   ageSeconds(ws: string): number | null {
     const at = this.lastSuccess.get(ws);
     return at === undefined ? null : (this.now() - at) / 1000;

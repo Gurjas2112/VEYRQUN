@@ -89,6 +89,14 @@ describe("happy paths", () => {
     expect(r.status).toBe(200);
   });
 
+  it("reports the enforced bundle revision per workspace on /readyz", async () => {
+    await post("/v1/chat/completions", chat("hello"), await h.cp.token("travel_agent_01")); // loads the bundle
+    const res = await request(`${h.gatewayUrl}/readyz`);
+    const body = (await res.body.json()) as { ready: boolean; bundle_revisions: Record<string, number> };
+    expect(res.statusCode).toBe(200);
+    expect(body.bundle_revisions[WS]).toBe(h.cp.revision);
+  });
+
   it("filters tools/list to what the agent may call", async () => {
     const r = await post("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/list" }, await h.cp.token("travel_agent_01"));
     const names = (r.json.result as { tools: Array<{ name: string }> }).tools.map((t) => t.name).sort();

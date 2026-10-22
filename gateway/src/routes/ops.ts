@@ -9,6 +9,7 @@ export function registerOps(app: FastifyInstance, deps: Deps): void {
   /** Readiness: Redis reachable and every loaded policy bundle within its staleness budget. */
   app.get("/readyz", async (_req, reply) => {
     const checks: Record<string, string> = {};
+    const revisions: Record<string, number | null> = {};
     try {
       await deps.redis.ping();
       checks.redis = "ok";
@@ -19,9 +20,11 @@ export function registerOps(app: FastifyInstance, deps: Deps): void {
       const age = deps.bundles.ageSeconds(ws) ?? Infinity;
       deps.metrics.bundleAge.set({ workspace: ws }, age);
       checks[`bundle:${ws}`] = age <= deps.cfg.BUNDLE_MAX_STALENESS_S ? "ok" : `stale (${Math.round(age)}s)`;
+      revisions[ws] = deps.bundles.revision(ws);
     }
     const ready = Object.values(checks).every((v) => v === "ok");
-    return reply.code(ready ? 200 : 503).send({ ready, checks });
+    // bundle_revisions lets operators (and tests) confirm that a policy change or agent stop is now enforced here.
+    return reply.code(ready ? 200 : 503).send({ ready, checks, bundle_revisions: revisions });
   });
 
   app.get("/metrics", async (_req, reply) => {

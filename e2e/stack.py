@@ -144,10 +144,20 @@ def fleet_env(st: Stack):
         return creds
 
     def operator(action: str, agent_id: str) -> None:
-        if action == "stop_agent":
-            st.service.stop_agent(agent_id, reason="scenario: operator kill switch", actor="user:fleet-operator")
-        else:
+        if action != "stop_agent":
             raise ValueError(action)
+        st.service.stop_agent(agent_id, reason="scenario: operator kill switch", actor="user:fleet-operator")
+        # Like an operator watching the dashboard: wait until the gateway enforces the new policy revision.
+        from veyrqun import counters
+
+        target, ws = counters.bundle_revision(), str(st.service.default_workspace())
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            rev = httpx.get(f"{st.gw}/readyz", timeout=2).json().get("bundle_revisions", {}).get(ws)
+            if rev is not None and target is not None and rev >= target:
+                return
+            time.sleep(0.05)
+        raise RuntimeError("gateway did not pick up the agent stop within 10 s")
 
     return Env(
         gateway_url=st.gw, control_plane_url=st.cp, register=register,
