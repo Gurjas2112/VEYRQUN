@@ -97,3 +97,13 @@ def test_everything_stops_at_expiry(demo_on, monkeypatch):
         # Sandbox bundles are refused, so gateways fail closed for them; real workspaces are unaffected.
         assert c.get(f"/bundles/current?workspace_id={body['workspace_id']}").status_code == 410
         assert c.get("/bundles/current?workspace=default").status_code == 200
+
+
+def test_stats_are_scoped_to_the_callers_workspace(demo_on):
+    from decimal import Decimal
+
+    service.attempt_action("travel_agent_01", "flight_rebook", Decimal("10"))  # default workspace activity
+    with new_client() as c:
+        _guest(c)
+        stats = c.get("/stats").json()
+        assert stats["decisions"] == 0 and "travel_agent_01" not in stats["per_agent"]

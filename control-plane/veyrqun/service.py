@@ -143,6 +143,42 @@ def fleet_status(workspace_id: UUID | None = None) -> dict:
             "agents_by_status": by_status}
 
 
+def workspace_stats(workspace_id: UUID, hours: int = 24) -> dict:
+    """Decision statistics for one workspace from its ledger (RLS-scoped, so never another tenant's data)."""
+    since = utcnow() - timedelta(hours=hours)
+    flt = ("workspace_id = :w AND ts >= :since AND action_type NOT LIKE 'operator:%' "
+           "AND action_type NOT LIKE 'auth:%'")
+    with tx(workspace_id) as conn:
+        rows = conn.execute(text(f"SELECT agent_id, outcome, coalesce(rule_id, '') AS rule_id, count(*) AS n, "  # noqa: S608 (static)
+                                 f"coalesce(sum(amount), 0) AS amount FROM audit.events WHERE {flt} "
+                                 "GROUP BY agent_id, outcome, rule_id"), {"w": workspace_id, "since": since}).all()
+        hourly = conn.execute(text(f"SELECT date_trunc('hour', ts) AS h, outcome, count(*) AS n FROM audit.events "  # noqa: S608
+                                   f"WHERE {flt} GROUP BY h, outcome ORDER BY h"), {"w": workspace_id, "since": since}).all()
+    by_outcome: dict[str, int] = {}
+    by_rule: dict[str, int] = {}
+    per_agent: dict[str, dict] = {}
+    for r in rows:
+        by_outcome[r.outcome] = by_outcome.get(r.outcome, 0) + r.n
+        if r.rule_id and r.outcome == "block":  # only refusals: redactions and approval holds aren't blocks
+            by_rule[r.rule_id] = by_rule.get(r.rule_id, 0) + r.n
+        a = per_agent.setdefault(r.agent_id, {"decisions": 0, "blocked": 0, "approved_amount": Decimal("0")})
+        a["decisions"] += r.n
+        if r.outcome == "block":
+            a["blocked"] += r.n
+        if r.outcome in ("allow", "redact"):
+            a["approved_amount"] += Decimal(r.amount)
+    total = sum(by_outcome.values())
+    series: dict[str, dict] = {}
+    for r in hourly:
+        series.setdefault(r.h.isoformat(), {})[r.outcome] = r.n
+    return {
+        "hours": hours, "decisions": total, "by_outcome": by_outcome, "by_rule": by_rule,
+        "block_rate": round(by_outcome.get("block", 0) / total, 4) if total else None,
+        "per_agent": {k: {**v, "approved_amount": fmt(v["approved_amount"])} for k, v in per_agent.items()},
+        "hourly": [{"hour": h, **c} for h, c in series.items()],
+    }
+
+
 def policy_history(agent_key: str, workspace_id: UUID | None = None) -> list[dict]:
     ws = workspace_id or default_workspace()
     row = _find_row(ws, agent_key)

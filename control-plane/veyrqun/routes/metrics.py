@@ -1,6 +1,6 @@
 import hmac
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 
 from .. import service
@@ -14,6 +14,12 @@ router = APIRouter(tags=["observability"])
 @router.get("/metrics")
 def get_metrics(p: Principal = Depends(require("metrics:read"))):
     return {**metrics.snapshot(), "fleet": service.fleet_status(p.workspace_id)}
+
+
+@router.get("/stats")
+def workspace_stats(hours: int = Query(24, ge=1, le=24 * 31), p: Principal = Depends(require("metrics:read"))):
+    """Decision statistics for the caller's workspace only (from its ledger)."""
+    return service.workspace_stats(p.workspace_id, hours)
 
 
 @router.get("/metrics/prometheus", response_class=PlainTextResponse)

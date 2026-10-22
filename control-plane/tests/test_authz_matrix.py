@@ -57,6 +57,7 @@ ENDPOINTS: dict[tuple[str, str], str] = {
     ("GET", "/audit/anchors"): "audit:verify",
     ("GET", "/audit/decision/{decision_id}"): "audit:read",
     ("POST", "/playground/run"): "actions:simulate",
+    ("GET", "/stats"): "metrics:read",
     ("GET", "/fleet/status"): "agents:read",
     ("POST", "/emergency-stop"): "fleet:stop",
     ("POST", "/emergency-stop/{agent_id}"): "agents:control",

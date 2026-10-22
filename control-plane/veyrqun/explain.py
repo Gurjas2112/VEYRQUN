@@ -8,6 +8,8 @@ from __future__ import annotations
 REASONS: dict[str, str] = {
     "": "Allowed: the action is on the agent's allowlist and within every limit.",
     "unknown_agent": "Blocked: this agent isn't registered, and unknown agents are denied by default.",
+    "policy_undefined": "Blocked: no policy matched this request, so it is denied by default.",
+    "data_class_redacted": "Allowed with redaction: sensitive data was masked before it left the gateway.",
     "fleet_emergency_stop_active": "Blocked: an operator has stopped the whole fleet (kill switch).",
     "agent_revoked": "Blocked: this agent's access has been revoked.",
     "emergency_stop_active": "Blocked: an operator has stopped this agent.",
@@ -33,7 +35,7 @@ REASONS: dict[str, str] = {
 def reason(outcome: str | None, rule_id: str | None, error_type: str | None = None) -> str:
     if outcome == "require_approval":
         return REASONS["approval_required"]
-    if outcome == "redact" and not rule_id:
+    if outcome == "redact":
         return REASONS["redact"]
     for key in (rule_id, error_type):
         if key and key in REASONS:
