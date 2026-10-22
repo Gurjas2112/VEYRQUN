@@ -21,6 +21,7 @@ export interface DecisionEvent {
   policy_version: number;
   bundle_revision: number;
   data_classes: string[];
+  signals?: { injection_score: number | null; injection_patterns: string[] };
   redactions: string[];
   approval_id?: string | null;
   upstream_status?: number | null;

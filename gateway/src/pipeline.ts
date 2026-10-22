@@ -4,6 +4,7 @@
  *   -> audit backpressure check -> counters (atomic Lua; fail closed) -> proceed or respond.
  * Status codes follow the failure-mode contract (docs/AGENT_PROMPT.md section 4).
  */
+import { injectionSignal } from "./signals.js";
 import { randomUUID } from "node:crypto";
 import type { AgentIdentity } from "./auth.js";
 import { ApprovalsClient } from "./approvals.js";
@@ -60,6 +61,7 @@ export interface Context {
   effectiveOutcome: string;
   classes: string[];
   spans: Span[];
+  signals: { injection_score: number | null; injection_patterns: string[] };
   requestRedactions: Set<string>;
   responseRedact: Set<string>;
   responseBlock: Set<string>;
@@ -126,6 +128,7 @@ export class Pipeline {
 
     t = process.hrtime.bigint();
     const { classes, spans } = classify(input.text);
+    const injection = injectionSignal(input.text);
     timings.classify = ms(t);
 
     let approvalGranted = false;
@@ -148,7 +151,7 @@ export class Pipeline {
       action: input.action,
       amount_minor: input.amountMinor,
       data_classes: classes,
-      signals: {},
+      signals: { injection_score: injection.score },
       approval_granted: approvalGranted,
       fleet_state: { stopped: this.control.isStopped(ws) },
     });
@@ -158,7 +161,7 @@ export class Pipeline {
     const ctx: Context = {
       decisionId, identity: input.identity, action: input.action, actionKind: input.actionKind,
       amountMinor: input.amountMinor, currency, bundle, agent, decision, enforced, effectiveOutcome: decision.outcome,
-      classes, spans, requestRedactions: new Set(decision.redactions ?? []),
+      classes, spans, signals: { injection_score: injection.score, injection_patterns: injection.matched }, requestRedactions: new Set(decision.redactions ?? []),
       responseRedact: new Set(agent?.redact_data_classes ?? []), responseBlock: new Set(agent?.block_data_classes ?? []),
       approvalId: approvalGranted ? input.approvalId : undefined, timings, startedAt,
     };
@@ -240,6 +243,7 @@ export class Pipeline {
       policy_version: ctx.decision.policy_version,
       bundle_revision: ctx.bundle.revision,
       data_classes: ctx.classes,
+      signals: ctx.signals,
       redactions: [...ctx.requestRedactions],
       approval_id: ctx.approvalId ?? null,
       timings_ms: ctx.timings,

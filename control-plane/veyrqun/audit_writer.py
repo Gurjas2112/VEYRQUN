@@ -60,7 +60,7 @@ def parse_event(fields: dict) -> dict:
         decision_id = str(e["decision_id"])
         if not decision_id or len(decision_id) > 128:
             raise BadEvent("bad decision_id")
-        details = {k: e[k] for k in ("effective_outcome", "bundle_revision", "data_classes", "redactions", "approval_id",
+        details = {k: e[k] for k in ("effective_outcome", "bundle_revision", "data_classes", "signals", "redactions", "approval_id",
                                      "upstream_status", "stream_aborted", "request_sha256", "response_sha256",
                                      "timings_ms", "payload") if e.get(k) is not None}
         details["source"] = "gateway"
