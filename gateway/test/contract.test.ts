@@ -79,6 +79,16 @@ describe("happy paths", () => {
     expect(streamed.text).toContain("data: [DONE]");
   });
 
+  it("accepts a tool-call round trip where the assistant message has no content key", async () => {
+    const body = { model: "mock-model", messages: [
+      { role: "user", content: "rebook" },
+      { role: "assistant", tool_calls: [{ id: "c1", type: "function", function: { name: "flight_rebook", arguments: "{}" } }] },
+      { role: "tool", tool_call_id: "c1", content: "rebooked" },
+    ] };
+    const r = await post("/v1/chat/completions", body, await h.cp.token("travel_agent_01"));
+    expect(r.status).toBe(200);
+  });
+
   it("filters tools/list to what the agent may call", async () => {
     const r = await post("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/list" }, await h.cp.token("travel_agent_01"));
     const names = (r.json.result as { tools: Array<{ name: string }> }).tools.map((t) => t.name).sort();

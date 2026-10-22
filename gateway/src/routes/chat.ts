@@ -13,7 +13,8 @@ import { authenticate, sendGoverned } from "./common.js";
 // Core fields are validated; other OpenAI parameters (temperature, tools, ...) pass through untouched.
 const ChatBody = z.looseObject({
   model: z.string().min(1).max(128),
-  messages: z.array(z.looseObject({ role: z.string().max(32), content: z.unknown() })).min(1).max(512),
+  // `content` may be absent (an assistant message that only carries tool_calls).
+  messages: z.array(z.looseObject({ role: z.string().max(32), content: z.unknown().optional() })).min(1).max(512),
   stream: z.boolean().optional(),
   max_tokens: z.number().int().positive().max(1_000_000).optional(),
   stream_options: z.looseObject({ include_usage: z.boolean().optional() }).optional(),
