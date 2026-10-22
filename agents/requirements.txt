@@ -1,0 +1,5 @@
+# Fleet agents (Phase 4). Pinned releases at least two weeks old at the time of pinning.
+langgraph==1.2.14
+langgraph-checkpoint-postgres==3.1.2
+httpx>=0.28,<1
+psycopg[binary]>=3.2,<4

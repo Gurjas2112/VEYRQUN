@@ -28,6 +28,11 @@ Both copyright notices are kept in [LICENSE](LICENSE) as MIT requires.
 - Signed audit pipeline: `python -m veyrqun.audit_writer` (single-leader Redis Streams consumer, idempotent on
   `decision_id`, dead-letter stream), hash v2 covering `details`, a per-entry HMAC (rotatable secret), Ed25519-signed
   head anchors with optional S3 copies, `GET /audit/pipeline`, `GET /audit/anchors` (ADR 0012).
+- LangGraph demo fleet (`agents/`): fee reversal, card replacement, travel and a rogue agent, all traffic through
+  the gateway; approvals as durable `interrupt()`s on a Postgres checkpointer; 12 declared scenarios recorded in
+  `docs/results/scenarios.json` and run in CI (ADR 0013).
+- Gateway: tool-call arguments in model output are scanned (buffered when streamed); `injection_score` signal for
+  the Rego `injection_suspected` rule.
 
 ### Fixed
 - The v2 commit replaced the original author's copyright line in LICENSE. It has been restored.
