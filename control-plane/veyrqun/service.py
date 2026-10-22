@@ -618,6 +618,14 @@ def rotate_secret(agent_key: str, actor: str = "operator", workspace_id: UUID | 
 # ---------------------------------------------------------------- bundles
 
 
+def workspace_is_sandbox(workspace_slug: str | None = None, workspace_id: UUID | None = None) -> bool:
+    with tx() as conn:
+        if workspace_id is not None:
+            return bool(conn.execute(text("SELECT is_sandbox FROM iam.workspaces WHERE id = :w"), {"w": workspace_id}).scalar())
+        return bool(conn.execute(text("SELECT is_sandbox FROM iam.workspaces WHERE slug = :s"),
+                                 {"s": workspace_slug}).scalar())
+
+
 def current_bundle(workspace_slug: str | None = None, workspace_id: UUID | None = None) -> tuple[bytes, str, int, str, str]:
     from .policy import bundle
 

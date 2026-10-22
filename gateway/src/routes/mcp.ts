@@ -7,6 +7,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Deps } from "../app.js";
+import { remember } from "../explain.js";
 import { sha256 } from "../events.js";
 import { decimalToMinor } from "../pipeline.js";
 import { StreamScanner } from "../stream-scan.js";
@@ -99,6 +100,7 @@ export function registerMcp(app: FastifyInstance, deps: Deps): void {
     const argsText = JSON.stringify(args);
     const result = await deps.pipeline.govern({ identity, action: name, actionKind: "tool", amountMinor, text: argsText,
       approvalId: req.headers["x-veyrqun-approval"] as string | undefined });
+    remember(req, result.ctx);
     if (result.kind === "respond") return sendGoverned(reply, result, deps, rpc.id ?? null);
     const ctx = result.ctx;
     const tUp = process.hrtime.bigint();

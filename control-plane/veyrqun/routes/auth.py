@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
-from .. import audit
+from .. import audit, demo
 from ..auth import directory, sessions
 from ..auth.deps import Principal, cookie_names, current_principal
 from ..auth.oidc import OIDCError, provider
@@ -164,7 +164,32 @@ def me(p: Principal = Depends(current_principal)):
         "roles": sorted(p.roles), "permissions": sorted(p.permissions), "mfa": p.mfa,
         "step_up_fresh": time.time() - p.auth_time <= get_settings().step_up_max_age_s,
         "memberships": directory.memberships(UUID(p.id)),
+        "demo": {**demo.status(), "guest": bool(p.session and p.session.demo_guest)},
     }
+
+
+@router.get("/demo")
+def demo_status():
+    """Public: is the time-limited demo open, and until when (the login page shows this)."""
+    return demo.status()
+
+
+@router.post("/demo", status_code=201)
+def demo_login(request: Request):
+    """Anonymous guest login for the public demo: a private sandbox with a seeded fleet, no account needed."""
+    origin = request.headers.get("origin")
+    if origin is not None and origin not in get_settings().origins:
+        raise HTTPException(403, "origin not allowed")  # no cross-site login CSRF
+    ip = request.client.host if request.client else "unknown"
+    try:
+        session_id, s, ws = demo.create_guest(ip)
+    except demo.DemoUnavailable as exc:
+        headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
+        raise HTTPException(exc.status_code, exc.detail, headers=headers) from exc
+    _audit_auth(str(ws), f"user:{s.user_id}", "demo_guest_created")
+    response = JSONResponse({"workspace_id": str(ws), "roles": s.roles, **demo.status()}, status_code=201)
+    _set_session_cookies(response, session_id, s)
+    return response
 
 
 @router.post("/switch")

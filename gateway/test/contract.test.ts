@@ -97,6 +97,21 @@ describe("happy paths", () => {
     expect(body.bundle_revisions[WS]).toBe(h.cp.revision);
   });
 
+  it("explains decisions only to tokens with the veyrqun:explain scope (playground)", async () => {
+    const explainer = await h.cp.token("travel_agent_01", { scope: "actions:execute veyrqun:explain" });
+    const ok = await post("/mcp", tool("flight_rebook", { fare: "12.00", note: "mail jane.doe@example.com" }), explainer);
+    const e = JSON.parse(String(ok.headers["x-veyrqun-explain"]));
+    expect(e).toMatchObject({ outcome: "redact", action: "flight_rebook", amount_minor: 1200, data_classes: ["email"],
+      request_redactions: ["email"] });
+    expect(e.signals.injection_score).toBe(0);
+    const denied = await post("/mcp", tool("credit_limit_increase", { increase: "1.00" }), explainer);
+    expect(JSON.parse(String(denied.headers["x-veyrqun-explain"]))).toMatchObject({ outcome: "block", rule_id: "action_not_permitted" });
+    const streamed = await post("/v1/chat/completions", chat("hi", { stream: true }), explainer);
+    expect(JSON.parse(String(streamed.headers["x-veyrqun-explain"])).action).toBe("llm.chat");
+    const plain = await post("/mcp", tool("flight_rebook", { fare: "12.00" }), await h.cp.token("travel_agent_01"));
+    expect(plain.headers["x-veyrqun-explain"]).toBeUndefined();
+  });
+
   it("filters tools/list to what the agent may call", async () => {
     const r = await post("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/list" }, await h.cp.token("travel_agent_01"));
     const names = (r.json.result as { tools: Array<{ name: string }> }).tools.map((t) => t.name).sort();

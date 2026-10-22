@@ -6,6 +6,7 @@ import { sha256 } from "../events.js";
 import { costMinor, estimateTokens, messageText, priceFor, type ChatMessage, type ModelPrice, type ToolCall } from "../pricing.js";
 import type { Context } from "../pipeline.js";
 import { StreamScanner } from "../stream-scan.js";
+import { explainFor, remember } from "../explain.js";
 import { callUpstream, UpstreamTimeout } from "../upstream.js";
 import type { Deps } from "../app.js";
 import { authenticate, sendGoverned } from "./common.js";
@@ -78,6 +79,7 @@ export function registerChat(app: FastifyInstance, deps: Deps): void {
       identity, action: "llm.chat", actionKind: "llm", amountMinor: estimate, text,
       approvalId: req.headers["x-veyrqun-approval"] as string | undefined,
     });
+    remember(req, result.ctx);
     if (result.kind === "respond") return sendGoverned(reply, result, deps);
     const ctx = result.ctx;
     const outgoing = { ...body, messages: redactMessages(body.messages as ChatMessage[], ctx.requestRedactions) };
@@ -109,7 +111,7 @@ export function registerChat(app: FastifyInstance, deps: Deps): void {
       return reply.code(res.statusCode).header("x-veyrqun-decision-id", ctx.decisionId).type("application/json").send(errBody);
     }
 
-    if (body.stream) return streamResponse(reply, deps, ctx, res, tUp, governMs, price);
+    if (body.stream) return streamResponse(reply, deps, ctx, res, tUp, governMs, price, req);
 
     const json = (await res.body.json()) as {
       choices?: Array<{ message?: { content?: string | null; tool_calls?: ToolCall[] } }>; usage?: Usage };
@@ -155,7 +157,8 @@ async function settleUsage(deps: Deps, ctx: Context, usage: Usage | undefined, p
 }
 
 async function streamResponse(reply: FastifyReply, deps: Deps, ctx: Context,
-  res: { body: AsyncIterable<Buffer>; statusCode: number }, tUp: bigint, governMs: number, price: ModelPrice):
+  res: { body: AsyncIterable<Buffer>; statusCode: number }, tUp: bigint, governMs: number, price: ModelPrice,
+  req: FastifyRequest):
   Promise<FastifyReply> {
   reply.hijack();
   const out = reply.raw;
@@ -165,6 +168,7 @@ async function streamResponse(reply: FastifyReply, deps: Deps, ctx: Context,
     connection: "keep-alive",
     "x-accel-buffering": "no",
     "x-veyrqun-decision-id": ctx.decisionId,
+    ...(explainFor(req) ? { "x-veyrqun-explain": explainFor(req)! } : {}),
   });
   const write = async (s: string) => {
     if (!out.write(s)) await new Promise<void>((resolve) => out.once("drain", resolve)); // backpressure

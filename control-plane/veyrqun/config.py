@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -61,6 +62,17 @@ class Settings(BaseSettings):
     max_body_bytes: int = 1_048_576
     metrics_token: str | None = None
 
+    # --- public demo (time-limited guest sandboxes, no IdP needed) ---
+    demo_mode: bool = False
+    demo_expires_at: datetime | None = None   # ISO 8601; after it, guest login is refused and sandboxes fail closed
+    demo_max_guests_per_hour: int = Field(200, ge=1)
+    demo_guests_per_ip_per_hour: int = Field(10, ge=1)
+    gateway_url: str = "http://localhost:8080"  # the playground drives the real gateway
+    playground_model: str = "mock-model"        # model the playground's chat mode asks the gateway for
+    # Also drain the decision stream (bounded, under the writer's lease) when audit data is read. For deployments
+    # where the standalone writer may be asleep or scaled to zero; idempotent, so safe alongside it.
+    audit_drain_on_read: bool = False
+
     # --- audit pipeline (gateway decision events -> hash-chained ledger) ---
     audit_stream: str = "vq:decisions"
     audit_group: str = "audit-writer"
@@ -89,6 +101,12 @@ class Settings(BaseSettings):
             if self.allowed_origins.strip() == "*":
                 raise ValueError("ALLOWED_ORIGINS must not be '*' in production")
         return self
+
+    def demo_active(self) -> bool:
+        return self.demo_mode and (self.demo_expires_at is None or datetime.now(UTC) < self.demo_expires_at)
+
+    def demo_expired(self) -> bool:
+        return self.demo_mode and self.demo_expires_at is not None and datetime.now(UTC) >= self.demo_expires_at
 
     @property
     def origins(self) -> list[str]:

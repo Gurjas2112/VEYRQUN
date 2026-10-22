@@ -49,6 +49,10 @@ def current_bundle(
     presented = (authorization or "").removeprefix("Bearer ").strip()
     if expected and not hmac.compare_digest(presented, expected):
         raise HTTPException(401, "invalid service token")
+    if get_settings().demo_expired() and service.workspace_is_sandbox(workspace, workspace_id):
+        # After the demo window, sandbox bundles are refused: gateways keep the last good one only until
+        # BUNDLE_MAX_STALENESS_S, then fail closed for those workspaces.
+        raise HTTPException(410, "the public demo has ended")
     payload, etag, revision, kid, signature = service.current_bundle(workspace, workspace_id)
     headers = {
         "ETag": f'"{etag}"',

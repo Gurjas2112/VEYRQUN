@@ -8,6 +8,7 @@ import { jwksUrl, type Config } from "./config.js";
 import { ControlChannel } from "./control.js";
 import { Counters } from "./counters.js";
 import { EventSink } from "./events.js";
+import { explainFor } from "./explain.js";
 import { Metrics } from "./metrics.js";
 import { Pipeline } from "./pipeline.js";
 import { registerChat } from "./routes/chat.js";
@@ -59,6 +60,8 @@ export async function buildApp(deps: Deps): Promise<FastifyInstance> {
   // Every response carries a decision id (non-governed routes get the request id).
   app.addHook("onSend", async (req, reply, payload) => {
     if (!reply.hasHeader("x-veyrqun-decision-id")) reply.header("x-veyrqun-decision-id", req.id);
+    const explain = explainFor(req);
+    if (explain) reply.header("x-veyrqun-explain", explain);
     return payload;
   });
   registerOps(app, deps);

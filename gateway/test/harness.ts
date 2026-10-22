@@ -117,8 +117,8 @@ export class FakeControlPlane {
     this.url = await this.app.listen({ port: 0, host: "127.0.0.1" });
   }
 
-  async token(agent: string, over: { exp?: string; aud?: string; ws?: string } = {}): Promise<string> {
-    return new SignJWT({ ws: over.ws ?? WS, scope: "actions:execute" })
+  async token(agent: string, over: { exp?: string; aud?: string; ws?: string; scope?: string } = {}): Promise<string> {
+    return new SignJWT({ ws: over.ws ?? WS, scope: over.scope ?? "actions:execute" })
       .setProtectedHeader({ alg: "EdDSA", kid: "test-kid" })
       .setSubject(agent).setIssuer("https://veyrqun.local").setAudience(over.aud ?? "veyrqun-gateway")
       .setIssuedAt().setExpirationTime(over.exp ?? "5m").sign(this.key);

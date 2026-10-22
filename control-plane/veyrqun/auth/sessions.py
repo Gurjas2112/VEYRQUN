@@ -31,6 +31,7 @@ class Session:
     mfa: bool
     auth_time: int
     idp_sid: str | None = None
+    demo_guest: bool = False  # anonymous public-demo visitor, confined to their own sandbox
     csrf: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     created_at: int = field(default_factory=lambda: int(time.time()))
     last_seen: int = field(default_factory=lambda: int(time.time()))

@@ -96,7 +96,11 @@ def require(permission: str):
     def check(principal: Principal = Depends(current_principal)) -> Principal:
         if permission not in principal.permissions:
             raise HTTPException(403, f"permission denied: {permission}")
-        if principal.kind == "user":
+        if principal.kind == "user" and principal.session is not None and principal.session.demo_guest:
+            # Public-demo guests have no IdP, so no MFA. They are confined to their own unexpired sandbox,
+            # whose agents, money and data are synthetic (ADR 0014); everything else still applies.
+            _check_demo_guest(principal)
+        elif principal.kind == "user":
             if principal.roles & MFA_REQUIRED and not principal.mfa:
                 raise HTTPException(403, "multi-factor authentication required for this role")
             if permission in STEP_UP and int(time.time()) - principal.auth_time > get_settings().step_up_max_age_s:
@@ -106,6 +110,15 @@ def require(permission: str):
 
     check.__name__ = f"require_{permission.replace(':', '_')}"
     return check
+
+
+def _check_demo_guest(principal: Principal) -> None:
+    from . import directory
+
+    if get_settings().demo_expired():
+        raise HTTPException(410, "the public demo has ended")
+    if not directory.is_live_sandbox(principal.workspace_id):
+        raise HTTPException(403, "demo guests may only act in their own sandbox")
 
 
 def principal_optional(request: Request) -> Principal | None:

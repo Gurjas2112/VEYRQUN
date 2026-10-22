@@ -197,15 +197,20 @@ class AuditWriter:
 
     # ------------------------------------------------------------ loops
 
-    def drain(self) -> dict:
-        """Process everything currently in the stream, anchor, return stats (for --once, cron and tests)."""
+    def drain(self, max_items: int | None = None, anchor: bool = True) -> dict:
+        """Process what is currently in the stream (up to `max_items`), optionally anchor, return stats."""
         self.ensure_group()
         if not self.acquire():
             return {**self.stats, "leader": False}
         try:
-            while self.step(block_ms=1) > 0:
-                pass
-            self.maybe_anchor(force=True)
+            done = 0
+            while max_items is None or done < max_items:
+                n = self.step(block_ms=1, count=100 if max_items is None else min(100, max_items - done))
+                if n == 0:
+                    break
+                done += n
+            if anchor:
+                self.maybe_anchor(force=True)
             self.publish_status(True)
         finally:
             self.release()
@@ -228,6 +233,22 @@ class AuditWriter:
                 log.error("redis unavailable: %s", exc)
                 time.sleep(2)
         self.release()
+
+
+_reader: AuditWriter | None = None
+
+
+def drain_opportunistically(max_items: int = 500) -> None:
+    """When AUDIT_DRAIN_ON_READ is set: write pending decisions before serving audit data. Never raises."""
+    global _reader
+    if not get_settings().audit_drain_on_read:
+        return
+    try:
+        if _reader is None:
+            _reader = AuditWriter(consumer=f"reader-{socket.gethostname()}-{os.getpid()}")
+        _reader.drain(max_items=max_items, anchor=False)
+    except Exception as exc:  # the standalone writer will pick it up
+        log.warning("opportunistic drain failed: %s", exc)
 
 
 def status(r: redis.Redis | None = None) -> dict:

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
-from .. import audit, audit_writer, keys
+from .. import audit, audit_writer, explain, keys
 from ..auth.deps import Principal, require
 
 router = APIRouter(tags=["audit"])
@@ -20,11 +20,34 @@ def get_audit_log(
     action_type: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     before_seq: int | None = Query(None, ge=1),
+    since_seq: int | None = Query(None, ge=0),
     p: Principal = Depends(require("audit:read")),
 ):
-    """Newest first, keyset-paginated: pass `before_seq` = the smallest `seq` of the previous page."""
-    return audit.query(p.workspace_id, agent_id=agent_id, outcome=outcome, action_type=action_type,
-                       limit=limit, before_seq=before_seq)
+    """Newest first, keyset-paginated: pass `before_seq` = the smallest `seq` of the previous page.
+    Live feed: pass `since_seq` = the largest `seq` already seen to get newer entries, oldest first (no filters)."""
+    audit_writer.drain_opportunistically()
+    if since_seq is not None:
+        rows = audit.query_ascending(p.workspace_id, since_seq=since_seq, limit=limit)
+    else:
+        rows = audit.query(p.workspace_id, agent_id=agent_id, outcome=outcome, action_type=action_type,
+                           limit=limit, before_seq=before_seq)
+    return [_with_reason(r) for r in rows]
+
+
+def _with_reason(entry: dict) -> dict:
+    if entry["action_type"].startswith(("operator:", "auth:")):
+        return entry
+    return {**entry, "reason": explain.reason(entry["outcome"], entry["rule_id"])}
+
+
+@router.get("/audit/decision/{decision_id}")
+def by_decision(decision_id: str, p: Principal = Depends(require("audit:read"))):
+    """The ledger entry for a gateway decision id (from the `x-veyrqun-decision-id` header)."""
+    audit_writer.drain_opportunistically()
+    entry = audit.by_decision(decision_id, p.workspace_id)
+    if entry is None:
+        raise HTTPException(404, "not in the ledger yet (the audit writer may still be catching up)")
+    return {**_with_reason(entry), **audit.verify_entry(entry)}
 
 
 @router.get("/audit-log/verify")

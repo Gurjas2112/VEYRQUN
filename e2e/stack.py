@@ -74,7 +74,7 @@ def _kill(p: subprocess.Popen) -> None:
 
 @contextmanager
 def local_stack(*, name: str, db: str, redis_db: int, cp_port: int, gw_port: int, llm_port: int, mcp_port: int,
-                service_token: str) -> Iterator[Stack]:
+                service_token: str, extra_env: dict[str, str] | None = None) -> Iterator[Stack]:
     import redis
 
     recreate_database(db)
@@ -83,7 +83,8 @@ def local_stack(*, name: str, db: str, redis_db: int, cp_port: int, gw_port: int
     cp, gw = f"http://127.0.0.1:{cp_port}", f"http://127.0.0.1:{gw_port}"
     cp_env = {**os.environ, "VEYRQUN_ENV": "dev", "VEYRQUN_SIMULATOR": "0", "DEFAULT_WORKSPACE_ENV": "staging",
               "DATABASE_URL": f"{APP}/{db}", "MIGRATION_DATABASE_URL": f"{OWNER}/{db}", "REDIS_URL": redis_url,
-              "BUNDLE_SERVICE_TOKEN": service_token, "LOG_LEVEL": "WARNING"}
+              "BUNDLE_SERVICE_TOKEN": service_token, "LOG_LEVEL": "WARNING",
+              "GATEWAY_URL": f"http://127.0.0.1:{gw_port}", **(extra_env or {})}
     os.environ.update({k: v for k, v in cp_env.items() if k != "LOG_LEVEL"})  # this process talks to the same DB
     # Several stacks can run in one pytest process: drop settings and Lua scripts cached for the previous one.
     if (cfg := sys.modules.get("veyrqun.config")) is not None:

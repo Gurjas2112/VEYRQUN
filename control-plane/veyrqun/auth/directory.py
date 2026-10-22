@@ -228,9 +228,12 @@ def revoke_invite(workspace_id: UUID, invite_id: UUID, actor: str) -> None:
 # ---------------------------------------------------------------- sandbox & bootstrap
 
 
-def create_sandbox(user_id: UUID, email: str) -> UUID:
-    """Self-signup only ever creates an isolated sandbox with quotas and a 7-day lifetime."""
+def create_sandbox(user_id: UUID, email: str, roles: tuple[str, ...] = ("security_operator", "app_owner"),
+                   expires_at=None, actor: str = "system:sandbox-signup") -> UUID:
+    """Self-signup only ever creates an isolated sandbox with quotas and a 7-day lifetime (or less)."""
     s = get_settings()
+    default_exp = utcnow() + timedelta(days=s.sandbox_ttl_days)
+    exp = min(default_exp, expires_at) if expires_at else default_exp
     with tx(PLATFORM) as conn:
         existing = conn.execute(text("SELECT count(*) FROM iam.workspaces WHERE owner_user_id = :u AND is_sandbox "
                                      "AND (expires_at IS NULL OR expires_at > now())"), {"u": user_id}).scalar_one()
@@ -240,13 +243,19 @@ def create_sandbox(user_id: UUID, email: str) -> UUID:
         conn.execute(
             text("INSERT INTO iam.workspaces (id, slug, name, environment, is_sandbox, expires_at, owner_user_id, "
                  "quota_agents, quota_requests_per_day) VALUES (:id, :slug, 'Sandbox', 'sandbox', true, :exp, :u, :qa, :qr)"),
-            {"id": ws, "slug": f"sbx-{secrets.token_hex(5)}", "exp": utcnow() + timedelta(days=s.sandbox_ttl_days),
+            {"id": ws, "slug": f"sbx-{secrets.token_hex(5)}", "exp": exp,
              "u": user_id, "qa": s.sandbox_quota_agents, "qr": s.sandbox_quota_requests_per_day},
         )
         conn.execute(text("INSERT INTO gov.fleet_state (workspace_id) VALUES (:w)"), {"w": ws})
-    for role in ("security_operator", "app_owner"):
-        grant_role(ws, user_id, role, "system:sandbox-signup")
+    for role in roles:
+        grant_role(ws, user_id, role, actor)
     return ws
+
+
+def is_live_sandbox(workspace_id: UUID) -> bool:
+    with tx(PLATFORM) as conn:
+        return bool(conn.execute(text("SELECT 1 FROM iam.workspaces WHERE id = :w AND is_sandbox "
+                                      "AND (expires_at IS NULL OR expires_at > now())"), {"w": workspace_id}).first())
 
 
 def bootstrap_admin(issuer: str, sub: str, email: str, workspace_slug: str = "default") -> UUID:
