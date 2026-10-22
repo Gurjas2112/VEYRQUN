@@ -7,6 +7,7 @@ Prereqs: docker compose up -d postgres redis ; npm --prefix gateway ci
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -18,8 +19,8 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from sqlalchemy import create_engine, text
-from sqlalchemy.pool import NullPool
+import psycopg
+from psycopg import sql
 
 ROOT = Path(__file__).resolve().parents[1]
 OWNER = "postgresql+psycopg://veyrqun_owner:veyrqun_owner_dev@localhost:55432"
@@ -37,6 +38,19 @@ class Stack:
 
     def owner_url(self) -> str:
         return f"{OWNER}/{self.db}"
+
+
+def recreate_database(name: str, grant_app: bool = True) -> None:
+    """DROP + CREATE a scratch database. Identifiers can't be bound parameters, so they are validated and quoted
+    with psycopg.sql.Identifier instead of being formatted into SQL text."""
+    if not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", name):
+        raise ValueError(f"bad database name {name!r}")
+    db = sql.Identifier(name)
+    with psycopg.connect(f"{OWNER.replace('+psycopg', '')}/postgres", autocommit=True) as c:
+        c.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(db))
+        c.execute(sql.SQL("CREATE DATABASE {}").format(db))
+        if grant_app:
+            c.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO veyrqun_app").format(db))
 
 
 def wait(url: str, timeout: float = 60) -> None:
@@ -63,11 +77,7 @@ def local_stack(*, name: str, db: str, redis_db: int, cp_port: int, gw_port: int
                 service_token: str) -> Iterator[Stack]:
     import redis
 
-    admin = create_engine(f"{OWNER}/postgres", isolation_level="AUTOCOMMIT", poolclass=NullPool)
-    with admin.connect() as c:
-        c.execute(text(f'DROP DATABASE IF EXISTS "{db}" WITH (FORCE)'))
-        c.execute(text(f'CREATE DATABASE "{db}"'))
-        c.execute(text(f'GRANT CONNECT ON DATABASE "{db}" TO veyrqun_app'))
+    recreate_database(db)
     redis_url = f"redis://localhost:56379/{redis_db}"
     redis.Redis.from_url(redis_url).flushdb()  # no stream events or counters from earlier runs
     cp, gw = f"http://127.0.0.1:{cp_port}", f"http://127.0.0.1:{gw_port}"
@@ -124,10 +134,7 @@ def fleet_env(st: Stack):
     from langgraph.checkpoint.postgres import PostgresSaver
 
     ckpt_db = f"{st.db}_ckpt"
-    admin = create_engine(f"{OWNER}/postgres", isolation_level="AUTOCOMMIT", poolclass=NullPool)
-    with admin.connect() as c:
-        c.execute(text(f'DROP DATABASE IF EXISTS "{ckpt_db}" WITH (FORCE)'))
-        c.execute(text(f'CREATE DATABASE "{ckpt_db}"'))
+    recreate_database(ckpt_db, grant_app=False)
     ckpt_url = f"{OWNER.replace('+psycopg', '')}/{ckpt_db}"
     with PostgresSaver.from_conn_string(ckpt_url) as saver:
         saver.setup()
