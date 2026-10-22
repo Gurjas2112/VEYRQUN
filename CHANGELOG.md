@@ -26,7 +26,7 @@ Both copyright notices are kept in [LICENSE](LICENSE) as MIT requires.
 - Inline TypeScript gateway for LLM (`/v1/chat/completions`, SSE) and MCP traffic, with streaming PII scanning and the
   §4 failure contract (ADRs 0010–0011).
 - Signed audit pipeline: `python -m veyrqun.audit_writer` (single-leader Redis Streams consumer, idempotent on
-  `decision_id`, dead-letter stream), hash v2 covering `details`, per-entry HMAC with key rotation, Ed25519-signed
+  `decision_id`, dead-letter stream), hash v2 covering `details`, a per-entry HMAC (rotatable secret), Ed25519-signed
   head anchors with optional S3 copies, `GET /audit/pipeline`, `GET /audit/anchors` (ADR 0012).
 
 ### Fixed
