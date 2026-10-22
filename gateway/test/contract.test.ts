@@ -112,6 +112,14 @@ describe("happy paths", () => {
     expect(plain.headers["x-veyrqun-explain"]).toBeUndefined();
   });
 
+  it("returns tool results whole, even when longer than the scan holdback (regression)", async () => {
+    const note = "x".repeat(200);
+    const r = await post("/mcp", tool("flight_rebook", { fare: "10.00", note }), await h.cp.token("travel_agent_01"));
+    const text = (r.json.result as { content: Array<{ text: string }> }).content[0]!.text;
+    expect(text.startsWith("Done: flight_rebook")).toBe(true);
+    expect(text).toContain(note);
+  });
+
   it("filters tools/list to what the agent may call", async () => {
     const r = await post("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/list" }, await h.cp.token("travel_agent_01"));
     const names = (r.json.result as { tools: Array<{ name: string }> }).tools.map((t) => t.name).sort();

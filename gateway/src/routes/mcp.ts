@@ -123,8 +123,10 @@ export function registerMcp(app: FastifyInstance, deps: Deps): void {
     for (const part of json.result?.content ?? []) {
       if (part.type !== "text" || typeof part.text !== "string") continue;
       const scan = new StreamScanner(cfg.STREAM_SCAN_HOLDBACK, ctx.responseRedact, ctx.responseBlock);
-      scan.push(part.text);
-      const v = scan.end();
+      // push() releases everything except the holdback tail; end() releases the tail. Both parts are the text.
+      const head = scan.push(part.text);
+      const tail = head.kind === "abort" ? head : scan.end();
+      const v = head.kind === "emit" && tail.kind === "emit" ? { ...tail, text: head.text + tail.text } : tail;
       if (v.kind === "abort") {
         deps.metrics.streamAborts.inc({ data_class: v.cls });
         await deps.pipeline.finish(ctx, { upstream_status: up.res.statusCode, stream_aborted: true });
