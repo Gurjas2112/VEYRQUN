@@ -1,68 +1,105 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Design tokens: one set of names, two palettes. Components only use the semantic names below. */
 :root {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  color-scheme: dark;
-  --bg-ink: #0B0D10;
-  --bg-panel: #14171B;
-  --text-main: #E6E8EB;
-  --text-muted: #8A93A3;
-  --signal: #E8A33D;
-  --state-ok: #4C9A6A;
-  --state-blocked: #C1443B;
+  --canvas: #f5f5f1;
+  --surface: #ffffff;
+  --raised: #fafaf7;
+  --line: #e3e2dc;
+  --line-strong: #cfcdc4;
+  --ink: #15171c;
+  --muted: #565b66;
+  --faint: #868b96;
+  --brand: #2f4fd8;
+  --brand-soft: #e9edfd;
+  --on-brand: #ffffff;
+  --ok: #1d7f53;
+  --ok-soft: #e3f3ea;
+  --bad: #bf3329;
+  --bad-soft: #fbe9e7;
+  --wait: #a86a12;
+  --wait-soft: #fbf0dc;
+  --mask: #7146c9;
+  --mask-soft: #efe8fb;
+  --shadow: 0 1px 2px rgb(20 22 28 / 0.06), 0 4px 16px rgb(20 22 28 / 0.04);
 }
 
+:root[data-theme="dark"] {
+  --canvas: #0e1014;
+  --surface: #15181e;
+  --raised: #1a1e25;
+  --line: #262b34;
+  --line-strong: #353b47;
+  --ink: #e9ebef;
+  --muted: #a3a9b5;
+  --faint: #6e7483;
+  --brand: #8197ff;
+  --brand-soft: #1c2342;
+  --on-brand: #0e1014;
+  --ok: #52c58f;
+  --ok-soft: #10261c;
+  --bad: #ff6f63;
+  --bad-soft: #2c1513;
+  --wait: #f0b54d;
+  --wait-soft: #2a2110;
+  --mask: #b597ff;
+  --mask-soft: #221a36;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+}
+
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-on-brand: var(--on-brand);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-wait: var(--wait);
+  --color-wait-soft: var(--wait-soft);
+  --color-mask: var(--mask);
+  --color-mask-soft: var(--mask-soft);
+}
+
+html, body, #root { height: 100%; }
 body {
   margin: 0;
-  background-color: var(--bg-ink);
-  color: var(--text-main);
-  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Base Panel */
-.panel-base {
-  background-color: var(--bg-panel);
-  border-radius: 0.75rem;
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
 }
 
-/* Presenter / Script Panel */
-.panel-demo {
-  background-color: #0E1115;
-  border: 1px dashed rgba(232, 163, 61, 0.35);
-  border-radius: 0.75rem;
-}
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
 
-/* Slide animation for live feed */
-@keyframes slideDownFade {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+dialog::backdrop { background: rgb(10 12 16 / 0.45); backdrop-filter: blur(2px); }
+dialog { color: var(--ink); }
 
-.animate-slide-down {
-  animation: slideDownFade 0.18s ease-out forwards;
-}
+@keyframes vq-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.animate-in { animation: vq-in 180ms ease-out; }
 
-/* Custom scrollbars */
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
+@media (prefers-reduced-motion: reduce) { .animate-in { animation: none; } }
 
-::-webkit-scrollbar-track {
-  background: #0B0D10;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #22272E;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #2D333B;
-}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 10px; border: 2px solid var(--canvas); }

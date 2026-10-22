@@ -61,6 +61,9 @@ services:
       MIGRATION_DATABASE_URL: postgresql+psycopg://veyrqun_owner:veyrqun_owner_dev@postgres:5432/veyrqun
       REDIS_URL: redis://redis:6379/0
       ALLOWED_ORIGINS: http://localhost:5173
+      APP_BASE_URL: http://localhost:5173
+      OIDC_REDIRECT_URI: http://localhost:5173/api/auth/callback
+      GATEWAY_URL: http://gateway:8080
       VEYRQUN_ENV: dev
       BUNDLE_SERVICE_TOKEN: ${GATEWAY_SERVICE_TOKEN:-dev-gateway-token}
       OIDC_ISSUER: http://localhost:8180/realms/veyrqun
@@ -129,10 +132,15 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    # One entry point: the dashboard, /api -> control-plane, /v1 + /mcp -> gateway (nginx, non-root, port 8080).
+    environment:
+      CONTROL_PLANE_UPSTREAM: control-plane:8000
+      GATEWAY_UPSTREAM: gateway:8080
     ports:
-      - "5173:80"
+      - "5173:8080"
     depends_on:
       - control-plane
+      - gateway
 
 volumes:
   pgdata:
