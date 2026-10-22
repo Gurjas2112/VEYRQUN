@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
-from .. import audit, keys
+from .. import audit, audit_writer, keys
 from ..auth.deps import Principal, require
 
 router = APIRouter(tags=["audit"])
@@ -29,8 +29,20 @@ def get_audit_log(
 
 @router.get("/audit-log/verify")
 def verify_audit_chain(_: Principal = Depends(require("audit:verify"))):
-    """Walks the full ledger and recomputes every SHA-256 parent-child link."""
+    """Walks the full ledger: every SHA-256 hash and parent-child link, every HMAC, every signed anchor."""
     return audit.verify_chain()
+
+
+@router.get("/audit/pipeline")
+def pipeline_status(_: Principal = Depends(require("audit:verify"))):
+    """Audit writer health: stream backlog, unacked messages, dead letters, writer heartbeat."""
+    return audit_writer.status()
+
+
+@router.get("/audit/anchors")
+def list_anchors(limit: int = Query(20, ge=1, le=200), _: Principal = Depends(require("audit:verify"))):
+    """Most recent signed chain-head anchors (signature verifiable against the JWKS)."""
+    return audit.list_anchors(limit)
 
 
 @router.get("/audit/export")
@@ -73,8 +85,8 @@ def get_entry(entry_id: str, p: Principal = Depends(require("audit:read"))):
 
 @router.get("/audit/{entry_id}/verify")
 def verify_entry(entry_id: str, p: Principal = Depends(require("audit:read"))):
-    """Recompute one entry's hash in isolation (its link is checked by the full-chain verifier)."""
+    """Recompute one entry's hash and HMAC in isolation (its link is checked by the full-chain verifier)."""
     entry = audit.get(entry_id, p.workspace_id)
     if entry is None:
         raise HTTPException(404, "entry not found")
-    return {"id": entry_id, "valid": audit.compute_entry_hash(entry) == entry["entry_hash"]}
+    return {"id": entry_id, "seq": entry["seq"], **audit.verify_entry(entry)}

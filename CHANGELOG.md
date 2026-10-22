@@ -19,6 +19,15 @@ Both copyright notices are kept in [LICENSE](LICENSE) as MIT requires.
 - Attribution: both copyright lines in LICENSE, a README credit, and this changelog.
 - `AGENTS.md`, `CONTRIBUTING.md`, `.editorconfig`, `.env.example`, and GitHub Actions CI (lint, tests, build, secret scan).
 - `docs/AGENT_PROMPT.md`: the v3 build specification.
+- Control plane on PostgreSQL + Redis + OPA/Rego (WASM); money as `NUMERIC(18,2)`/`Decimal`; Ed25519-signed policy
+  bundles and agent JWTs; SQLite→Postgres migration with a data validator (ADRs 0002–0006).
+- Identity and access: OIDC BFF (Keycloak), six roles, MFA/step-up, maker-checker, row-level-security tenancy,
+  envelope encryption and crypto-shredding, signed audit export (ADRs 0007–0009).
+- Inline TypeScript gateway for LLM (`/v1/chat/completions`, SSE) and MCP traffic, with streaming PII scanning and the
+  §4 failure contract (ADRs 0010–0011).
+- Signed audit pipeline: `python -m veyrqun.audit_writer` (single-leader Redis Streams consumer, idempotent on
+  `decision_id`, dead-letter stream), hash v2 covering `details`, per-entry HMAC with key rotation, Ed25519-signed
+  head anchors with optional S3 copies, `GET /audit/pipeline`, `GET /audit/anchors` (ADR 0012).
 
 ### Fixed
 - The v2 commit replaced the original author's copyright line in LICENSE. It has been restored.

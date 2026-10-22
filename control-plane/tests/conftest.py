@@ -80,9 +80,10 @@ def clean_state(owner_engine):
     with owner_engine.begin() as conn:
         # TRUNCATE doesn't fire the row-level append-only trigger; only the owner may do it.
         conn.execute(text(
-            "TRUNCATE audit.events, gov.approvals, gov.spend_snapshots, gov.policy_versions, gov.agents, "
-            "gov.fleet_state, gov.bundle_revisions, iam.signing_keys, iam.memberships, iam.invites, "
-            "iam.identity_keys, iam.users, iam.workspaces, audit.legacy_v2_events, migration.id_map, migration.runs CASCADE"
+            "TRUNCATE audit.events, audit.decision_ids, audit.anchors, gov.approvals, gov.spend_snapshots, "
+            "gov.policy_versions, gov.agents, gov.fleet_state, gov.bundle_revisions, iam.signing_keys, iam.memberships, "
+            "iam.invites, iam.identity_keys, iam.users, iam.workspaces, audit.legacy_v2_events, migration.id_map, "
+            "migration.runs RESTART IDENTITY CASCADE"
         ))
         conn.execute(text("ALTER SEQUENCE audit.events_seq RESTART WITH 1"))
     counters.client().flushdb()

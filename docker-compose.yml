@@ -92,6 +92,27 @@ services:
       control-plane:
         condition: service_started
 
+  # Single active consumer of gateway decision events (Redis lease); safe to scale, extra replicas stand by.
+  audit-writer:
+    build:
+      context: .
+      dockerfile: control-plane/Dockerfile
+    command: ["python", "-m", "veyrqun.audit_writer"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://veyrqun_app:veyrqun_app_dev@postgres:5432/veyrqun
+      REDIS_URL: redis://redis:6379/0
+      VEYRQUN_ENV: dev
+      AUDIT_ANCHOR_INTERVAL_S: "60"
+    healthcheck:  # the image's default probes the API port; the writer reports a heartbeat to Redis instead
+      test: ["CMD", "python", "-c", "import sys,time,redis; h=redis.Redis.from_url('redis://redis:6379/0').hget('vq:audit-writer:status','heartbeat'); sys.exit(0 if h and time.time()-int(h)<30 else 1)"]
+      interval: 15s
+      timeout: 3s
+    depends_on:
+      redis:
+        condition: service_healthy
+      control-plane:
+        condition: service_started
+
   mock-llm:
     build:
       context: .

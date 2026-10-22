@@ -61,6 +61,21 @@ class Settings(BaseSettings):
     max_body_bytes: int = 1_048_576
     metrics_token: str | None = None
 
+    # --- audit pipeline (gateway decision events -> hash-chained ledger) ---
+    audit_stream: str = "vq:decisions"
+    audit_group: str = "audit-writer"
+    audit_dlq_stream: str = "vq:decisions:dlq"
+    audit_max_deliveries: int = Field(5, ge=1)
+    audit_claim_idle_ms: int = Field(30_000, ge=1000)
+    audit_leader_ttl_ms: int = Field(15_000, ge=1000)
+    audit_anchor_interval_s: int = Field(300, ge=1)
+    # Optional off-database copy of anchors (S3-compatible: AWS, Supabase Storage, MinIO). SigV4, path-style.
+    anchor_s3_endpoint: str | None = None
+    anchor_s3_bucket: str | None = None
+    anchor_s3_region: str = "us-east-1"
+    anchor_s3_access_key_id: str | None = None
+    anchor_s3_secret_access_key: str | None = None
+
     rate_window_ms: int = 60_000
     counter_ttl_s: int = 2 * 86_400
 

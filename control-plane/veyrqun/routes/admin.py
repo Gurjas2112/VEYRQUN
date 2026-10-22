@@ -44,7 +44,7 @@ class RoleGrant(BaseModel):
 
 class KeyRotate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    purpose: Literal["agent_jwt", "bundle"]
+    purpose: Literal["agent_jwt", "bundle", "audit_hmac", "audit_anchor"]
 
 
 def _member_of_my_workspace(user_id: UUID, p: Principal) -> None:

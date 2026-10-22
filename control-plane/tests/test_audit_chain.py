@@ -22,7 +22,8 @@ def _as_dba(owner_engine, sql, params=None):
 
 
 def test_empty_chain_is_valid():
-    assert audit.verify_chain() == {"valid": True, "entries_checked": 0, "head_hash": audit.GENESIS}
+    result = audit.verify_chain()
+    assert (result["valid"], result["entries_checked"], result["head_hash"]) == (True, 0, audit.GENESIS)
 
 
 def test_every_decision_is_logged_and_chain_verifies():
@@ -79,12 +80,14 @@ def test_reordering_is_detected(owner_engine):
     with owner_engine.connect() as conn:
         rows = conn.execute(text("SELECT seq FROM audit.events ORDER BY seq")).all()
     a, b = rows[1].seq, rows[2].seq
-    _as_dba(owner_engine, "UPDATE audit.events SET seq = CASE seq WHEN :a THEN :b WHEN :b THEN :a END "
-                          "WHERE seq IN (:a, :b)", {"a": a, "b": b})
+    # Swap via a temporary value: rows can share a timestamp, and the (seq, ts) key is checked per row.
+    for frm, to in ((a, -1), (b, a), (-1, b)):
+        _as_dba(owner_engine, "UPDATE audit.events SET seq = :to WHERE seq = :frm", {"frm": frm, "to": to})
     assert audit.verify_chain()["valid"] is False
 
 
-def test_rehashed_forgery_still_breaks_the_next_link(owner_engine):
+def test_rehashed_forgery_is_caught_by_the_hmac(owner_engine):
+    """An attacker with DB access recomputes the SHA-256 of a forged row, but can't recompute its HMAC."""
     _activity(6)
     with owner_engine.connect() as conn:
         rows = conn.execute(text("SELECT * FROM audit.events ORDER BY seq")).all()
@@ -93,7 +96,7 @@ def test_rehashed_forgery_still_breaks_the_next_link(owner_engine):
     _as_dba(owner_engine, "UPDATE audit.events SET outcome = 'allow', rule_id = NULL, entry_hash = :h WHERE id = :id",
             {"h": forged["entry_hash"], "id": rows[2].id})
     result = audit.verify_chain()
-    assert result["valid"] is False and result["broken_at"] == str(rows[3].id)
+    assert result["valid"] is False and result["broken_at"] == str(rows[2].id) and result["reason"] == "hmac invalid"
 
 
 def test_single_entry_lookup():

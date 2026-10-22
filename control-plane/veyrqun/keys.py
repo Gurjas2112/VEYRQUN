@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import secrets
 import time
 from functools import lru_cache
@@ -89,13 +90,62 @@ def active_key(purpose: str) -> tuple[str, Ed25519PrivateKey]:
 
 
 def rotate(purpose: str) -> str:
-    """Retire the active key (it stays in JWKS for verification) and create a new one."""
+    """Retire the active key (it stays verifiable) and create a new one."""
     with tx() as conn:
         conn.execute(text("UPDATE iam.signing_keys SET retired_at = now() WHERE purpose = :p AND retired_at IS NULL"),
                      {"p": purpose})
     _cache.pop(purpose, None)
     reset_cache()
+    if purpose == "audit_hmac":
+        return active_hmac()[0]
     return active_key(purpose)[0]
+
+
+# ---------------------------------------------------------------- audit HMAC secrets
+# Symmetric secrets (never published). Retired secrets remain loadable by kid, so old entries keep verifying.
+
+_hmac_secrets: dict[str, bytes] = {}
+_hmac_active: str | None = None
+
+
+def _create_hmac() -> tuple[str, bytes]:
+    secret = os.urandom(32)
+    kid = f"audit_hmac-{int(time.time())}-{secrets.token_hex(3)}"
+    with tx() as conn:
+        conn.execute(
+            text("INSERT INTO iam.signing_keys (kid, purpose, alg, public_jwk, private_enc) "
+                 "VALUES (:kid, 'audit_hmac', 'HS256', NULL, :enc)"),
+            {"kid": kid, "enc": keyring().encrypt(secret, aad=kid.encode())},
+        )
+    return kid, secret
+
+
+def active_hmac() -> tuple[str, bytes]:
+    global _hmac_active
+    if _hmac_active and _hmac_active in _hmac_secrets:
+        return _hmac_active, _hmac_secrets[_hmac_active]
+    with tx() as conn:
+        row = conn.execute(text("SELECT kid, private_enc FROM iam.signing_keys WHERE purpose = 'audit_hmac' "
+                                "AND retired_at IS NULL ORDER BY created_at DESC LIMIT 1")).first()
+    if row is None:
+        kid, secret = _create_hmac()
+    else:
+        kid, secret = row.kid, keyring().decrypt(bytes(row.private_enc), aad=row.kid.encode())
+    _hmac_secrets[kid] = secret
+    _hmac_active = kid
+    return kid, secret
+
+
+def hmac_secret(kid: str) -> bytes | None:
+    if kid in _hmac_secrets:
+        return _hmac_secrets[kid]
+    with tx() as conn:
+        row = conn.execute(text("SELECT private_enc FROM iam.signing_keys WHERE kid = :k AND purpose = 'audit_hmac'"),
+                           {"k": kid}).first()
+    if row is None:
+        return None
+    _hmac_secrets[kid] = keyring().decrypt(bytes(row.private_enc), aad=kid.encode())
+    return _hmac_secrets[kid]
 
 
 _jwks_cache: tuple[float, dict] | None = None
@@ -111,7 +161,7 @@ def jwks() -> dict:
     with tx() as conn:
         rows = conn.execute(
             text(
-                "SELECT public_jwk FROM iam.signing_keys WHERE purpose IN ('agent_jwt', 'bundle') "
+                "SELECT public_jwk FROM iam.signing_keys WHERE purpose IN ('agent_jwt', 'bundle', 'audit_anchor') "
                 "AND (retired_at IS NULL OR retired_at > now() - interval '24 hours') ORDER BY created_at"
             )
         ).all()
@@ -158,7 +208,9 @@ def check_client_secret(secret: str, stored_hash: str | None) -> bool:
 
 
 def reset_cache() -> None:
-    global _jwks_cache
+    global _jwks_cache, _hmac_active
     _cache.clear()
     _jwks_cache = None
+    _hmac_secrets.clear()
+    _hmac_active = None
     keyring.cache_clear()

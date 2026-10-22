@@ -2,7 +2,7 @@
 
 Verifies the contract between the two halves: Ed25519 agent JWTs and JWKS, bundles signed in Python and
 verified in Node, Redis Lua counters shared by both, decision events on the stream, approvals through the
-internal API, and kill-switch propagation from the control plane to the gateway (measured).
+internal API, the audit writer chaining gateway events, and kill-switch propagation from the control plane to the gateway (measured).
 
 Prereqs: docker compose up -d postgres redis ; npm --prefix gateway ci
 Run:     python -m pytest e2e/test_gateway_interop.py -q
@@ -51,6 +51,9 @@ def stack():
         c.execute(text("DROP DATABASE IF EXISTS veyrqun_interop WITH (FORCE)"))
         c.execute(text("CREATE DATABASE veyrqun_interop"))
         c.execute(text("GRANT CONNECT ON DATABASE veyrqun_interop TO veyrqun_app"))
+    import redis
+
+    redis.Redis.from_url("redis://localhost:56379/10").flushdb()  # fresh DB, so no stream events from earlier runs
     cp_env = {**os.environ, "VEYRQUN_ENV": "dev", "VEYRQUN_SIMULATOR": "0", "DEFAULT_WORKSPACE_ENV": "staging",
               "DATABASE_URL": "postgresql+psycopg://veyrqun_app:veyrqun_app_dev@localhost:55432/veyrqun_interop",
               "MIGRATION_DATABASE_URL": f"{OWNER}/veyrqun_interop", "REDIS_URL": "redis://localhost:56379/10",
@@ -146,6 +149,20 @@ def test_decision_events_reach_the_stream(stack):
     r = redis.Redis.from_url("redis://localhost:56379/10", decode_responses=True)
     last = json.loads(r.xrevrange("vq:decisions", count=1)[0][1]["event"])
     assert last["agent_id"] == "support_bot" and last["workspace_id"] == str(stack["service"].default_workspace())
+
+
+def test_audit_writer_chains_gateway_decisions(stack):
+    """Gateway (Node) -> Redis Stream -> audit writer (Python) -> HMAC-signed, anchored, verifiable ledger."""
+    from veyrqun import audit, audit_writer
+
+    stats = audit_writer.AuditWriter(consumer="interop", put=None).drain()
+    assert stats["leader"] and stats["written"] > 0 and stats["dead_lettered"] == 0
+    entries = audit.query(stack["service"].default_workspace(), agent_id="support_bot", limit=200)
+    gateway = [e for e in entries if e["details"].get("source") == "gateway"]
+    assert gateway and all(e["hash_version"] == 2 and e["hmac"] for e in gateway)
+    result = audit.verify_chain()
+    assert result["valid"] and result["anchors_checked"] >= 1
+    assert audit_writer.AuditWriter(consumer="interop-2", put=None).drain()["written"] == 0  # nothing left, no dupes
 
 
 def test_kill_switch_propagation_from_control_plane_to_gateway(stack):

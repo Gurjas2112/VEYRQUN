@@ -3,7 +3,7 @@
   python scripts/verify_export.py export.ndjson --jwks jwks.json      # or --jwks-url https://.../.well-known/jwks.json
 
 Checks: manifest signature (Ed25519, kid from JWKS), body SHA-256, record count and first/last hash, every
-entry's own SHA-256, and the hash links between entries that are consecutive in the global chain.
+entry's own SHA-256 (hash v1 and v2), and the hash links between entries that are consecutive in the global chain.
 Needs only the export file, the public JWKS and Python + `cryptography`. No database access.
 """
 
@@ -20,8 +20,10 @@ from pathlib import Path
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-HASHED_FIELDS = ("seq", "id", "ts", "workspace_id", "actor", "agent_id", "action_type", "amount", "currency",
-                 "outcome", "mode", "rule_id", "policy_version", "decision_id", "prev_hash")
+# Must match veyrqun.audit.HASHED_FIELDS (kept separate so this file runs without the control-plane package).
+_BASE = ("seq", "id", "ts", "workspace_id", "actor", "agent_id", "action_type", "amount", "currency",
+         "outcome", "mode", "rule_id", "policy_version", "decision_id", "prev_hash")
+HASHED_FIELDS = {1: _BASE, 2: (*_BASE, "details", "hash_version")}
 
 
 def _b64u(s: str) -> bytes:
@@ -29,7 +31,8 @@ def _b64u(s: str) -> bytes:
 
 
 def entry_hash(e: dict) -> str:
-    payload = json.dumps({k: e[k] for k in HASHED_FIELDS}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    fields = HASHED_FIELDS[e.get("hash_version", 1)]
+    payload = json.dumps({k: e[k] for k in fields}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
