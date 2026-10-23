@@ -87,10 +87,16 @@ export default function Login() {
                   <div className="my-5 flex items-center gap-3 text-xs text-faint"><span className="h-px flex-1 bg-line" />or<span className="h-px flex-1 bg-line" /></div>
                 </>
               )}
-              <a href={ssoLoginUrl(next)} className="flex h-9 w-full items-center justify-center rounded-lg border border-line text-sm font-medium hover:border-line-strong">
-                Continue with single sign-on
-              </a>
-              <p className="mt-2 text-center text-xs text-faint">For workspace members invited by an admin (MFA required for operators).</p>
+              {demo.data?.sso !== false ? (
+                <>
+                <a href={ssoLoginUrl(next)} className="flex h-9 w-full items-center justify-center rounded-lg border border-line text-sm font-medium hover:border-line-strong">
+                  Continue with single sign-on
+                </a>
+                <p className="mt-2 text-center text-xs text-faint">For workspace members invited by an admin (MFA required for operators).</p>
+                </>
+              ) : (
+                <p className="text-center text-xs text-faint">Single sign-on isn't configured on this public demo deployment.</p>
+              )}
               {error && <p className="mt-4 rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad" role="alert">{error}</p>}
               {params.get("no_workspace") && <p className="mt-4 text-sm text-muted">You're signed in but not a member of any workspace yet. Ask an admin for an invite.</p>}
             </div>

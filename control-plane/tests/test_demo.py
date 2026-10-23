@@ -29,7 +29,7 @@ def _guest(client):
 
 def test_demo_is_off_unless_enabled():
     with new_client() as c:
-        assert c.get("/auth/demo").json() == {"enabled": False, "active": False, "expires_at": None}
+        assert c.get("/auth/demo").json() == {"enabled": False, "active": False, "expires_at": None, "sso": True}
         assert c.post("/auth/demo").status_code == 404
 
 

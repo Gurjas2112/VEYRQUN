@@ -52,7 +52,7 @@ class DemoUnavailable(Exception):
 def status() -> dict:
     s = get_settings()
     return {"enabled": s.demo_mode, "active": s.demo_active(),
-            "expires_at": s.demo_expires_at.isoformat() if s.demo_expires_at else None}
+            "expires_at": s.demo_expires_at.isoformat() if s.demo_expires_at else None, "sso": s.sso_enabled}
 
 
 def _rate_limit(ip: str) -> None:

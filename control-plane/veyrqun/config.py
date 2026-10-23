@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     oidc_scopes: str = "openid email profile"
     oidc_mfa_amr: str = "otp,hwk,mfa,swk"      # amr values that count as multi-factor
     oidc_mfa_acr: str = ""                     # optional acr values that count as multi-factor
+    sso_enabled: bool = True                   # false when no IdP is deployed (the login page hides SSO)
     app_base_url: str = "http://localhost:5173"
     session_cookie_secure: bool = True
     step_up_max_age_s: int = 300
