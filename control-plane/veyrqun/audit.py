@@ -80,7 +80,8 @@ def append(
         if existing is not None:
             row = conn.execute(text("SELECT * FROM audit.events WHERE seq = :s"), {"s": existing}).first()
             return {**row_to_entry(row), "duplicate": True}
-    prev = conn.execute(text("SELECT entry_hash FROM audit.events ORDER BY seq DESC LIMIT 1")).scalar()
+    # Global head, not this tenant's: the lookup must bypass row-level security (migration 0005).
+    prev = conn.execute(text("SELECT audit.chain_head()")).scalar()
     seq = conn.execute(text("SELECT nextval('audit.events_seq')")).scalar_one()
     entry_id = uuid7()
     # Gateway events carry the decision time, so spend lands on the same local day the gateway reserved it.

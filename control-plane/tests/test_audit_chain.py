@@ -102,3 +102,18 @@ def test_rehashed_forgery_is_caught_by_the_hmac(owner_engine):
 def test_single_entry_lookup():
     entry, _, _ = service.attempt_action("travel_agent_01", "flight_rebook", Decimal("5"))
     assert audit.get(entry["id"], service.default_workspace())["entry_hash"] == entry["entry_hash"]
+
+
+def test_interleaved_tenants_keep_one_linear_chain():
+    """Row-level security must not hide the global chain head from a tenant-scoped append (regression: the head
+    lookup ran under RLS, so a second workspace forked the chain)."""
+    from veyrqun.auth import directory
+    from veyrqun.ids import uuid7
+
+    other = directory.create_sandbox(directory.upsert_user("https://idp.test", f"s-{uuid7()}", "x@bank.test", None), "x@bank.test")
+    for ws in (service.default_workspace(), other, service.default_workspace(), other):
+        with tx(ws) as conn:
+            audit.append(conn, workspace_id=ws, actor="t", agent_id="a", action_type="x", amount=Decimal("1"),
+                         currency="USD", outcome="allow", rule_id=None, policy_version=1)
+    result = audit.verify_chain()
+    assert result["valid"], result
