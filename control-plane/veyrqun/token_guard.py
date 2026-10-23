@@ -42,7 +42,7 @@ def failed(k: tuple[str, str]) -> None:
             pipe.expire(key, WINDOW_S, nx=True)
         pipe.execute()
     except redis.RedisError as exc:
-        log.warning("token guard unavailable: %s", exc)
+        log.warning("failed-attempt counter unavailable (%s); lockout not enforced", type(exc).__name__)
 
 
 def succeeded(k: tuple[str, str]) -> None:
