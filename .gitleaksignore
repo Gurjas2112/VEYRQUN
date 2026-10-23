@@ -1,3 +1,7 @@
 # Reviewed false positives only, one per line: <commit>:<file>:<rule>:<line>
 # CHANGELOG prose about the audit HMAC matched generic-api-key (no secret involved).
 887fd90ce91f63441f4ce055da4a706416479992:CHANGELOG.md:generic-api-key:29
+# Synthetic fixtures for the secret detector's own tests (public jwt.io example token, fake GitHub token).
+5e08080e49b0c5b159b810a2eda719d8f48604bb:evals/cases.py:jwt:79
+d80e28bf2baf3cdd662aac7edb21647607cb4a93:gateway/test/unit.test.ts:github-pat:171
+d80e28bf2baf3cdd662aac7edb21647607cb4a93:gateway/test/unit.test.ts:jwt:172
