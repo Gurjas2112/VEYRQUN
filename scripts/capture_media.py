@@ -1,4 +1,4 @@
-"""Capture the screenshots and the screen recording in app_screenshots_screen_recording/.
+"""Capture the screenshots in app_screenshots_screen_recording/ (the narrated video: scripts/record_walkthrough.py).
 
   docker compose up -d postgres redis && npm --prefix gateway ci && npm --prefix frontend ci
   python -m playwright install chromium
@@ -52,8 +52,6 @@ def capture(base: str) -> None:
     from playwright.sync_api import sync_playwright
 
     OUT.mkdir(exist_ok=True)
-    video_dir = OUT / "_video"
-    shutil.rmtree(video_dir, ignore_errors=True)
     n = 0
 
     def shot(page, name: str, full: bool = False) -> None:
@@ -64,8 +62,7 @@ def capture(base: str) -> None:
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        ctx = browser.new_context(viewport={"width": 1440, "height": 900}, record_video_dir=str(video_dir),
-                                  record_video_size={"width": 1440, "height": 900}, color_scheme="light")
+        ctx = browser.new_context(viewport={"width": 1440, "height": 900}, color_scheme="light")
         page = ctx.new_page()
         page.goto(f"{base}/login")
         page.get_by_role("button", name="Try the live demo").wait_for()
@@ -137,17 +134,7 @@ def capture(base: str) -> None:
         ctx.close()
         browser.close()
 
-    videos = sorted(video_dir.glob("*.webm"))
-    if videos:
-        target = OUT / "veyrqun_walkthrough.webm"
-        shutil.move(str(videos[-1]), target)
-        ffmpeg = shutil.which("ffmpeg")
-        if ffmpeg:
-            subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-i", str(target), "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                            "-movflags", "+faststart", str(OUT / "veyrqun_walkthrough.mp4")], check=True)
-            target.unlink()
-    shutil.rmtree(video_dir, ignore_errors=True)
-    print(f"wrote {n} screenshots and a walkthrough video to {OUT}")
+    print(f"wrote {n} screenshots to {OUT} (the narrated video: scripts/record_walkthrough.py)")
 
 
 def main() -> None:
