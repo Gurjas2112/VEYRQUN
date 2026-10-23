@@ -146,14 +146,16 @@ def fleet_status(workspace_id: UUID | None = None) -> dict:
 def workspace_stats(workspace_id: UUID, hours: int = 24) -> dict:
     """Decision statistics for one workspace from its ledger (RLS-scoped, so never another tenant's data)."""
     since = utcnow() - timedelta(hours=hours)
-    flt = ("workspace_id = :w AND ts >= :since AND action_type NOT LIKE 'operator:%' "
-           "AND action_type NOT LIKE 'auth:%'")
+    params = {"w": workspace_id, "since": since}
     with tx(workspace_id) as conn:
-        rows = conn.execute(text(f"SELECT agent_id, outcome, coalesce(rule_id, '') AS rule_id, count(*) AS n, "  # noqa: S608 (static)
-                                 f"coalesce(sum(amount), 0) AS amount FROM audit.events WHERE {flt} "
-                                 "GROUP BY agent_id, outcome, rule_id"), {"w": workspace_id, "since": since}).all()
-        hourly = conn.execute(text(f"SELECT date_trunc('hour', ts) AS h, outcome, count(*) AS n FROM audit.events "  # noqa: S608
-                                   f"WHERE {flt} GROUP BY h, outcome ORDER BY h"), {"w": workspace_id, "since": since}).all()
+        rows = conn.execute(text(
+            "SELECT agent_id, outcome, coalesce(rule_id, '') AS rule_id, count(*) AS n, coalesce(sum(amount), 0) AS amount "
+            "FROM audit.events WHERE workspace_id = :w AND ts >= :since AND action_type NOT LIKE 'operator:%' "
+            "AND action_type NOT LIKE 'auth:%' GROUP BY agent_id, outcome, rule_id"), params).all()
+        hourly = conn.execute(text(
+            "SELECT date_trunc('hour', ts) AS h, outcome, count(*) AS n FROM audit.events "
+            "WHERE workspace_id = :w AND ts >= :since AND action_type NOT LIKE 'operator:%' "
+            "AND action_type NOT LIKE 'auth:%' GROUP BY h, outcome ORDER BY h"), params).all()
     by_outcome: dict[str, int] = {}
     by_rule: dict[str, int] = {}
     per_agent: dict[str, dict] = {}
