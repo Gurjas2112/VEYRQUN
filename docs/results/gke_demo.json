@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-10-23T11:13:32.998635+00:00",
+  "generated_at": "2026-10-23T13:07:14.184575+00:00",
   "base_url": "https://136.82.10.126.nip.io",
   "demo_expires_at": "2026-10-28T10:40:00+00:00",
   "checks_passed": 14,
   "checks_total": 14,
   "playground_round_trip_ms": {
-    "median": 531.1,
-    "max": 2200.4,
+    "median": 640.2,
+    "max": 2170.3,
     "note": "browser-side view: visitor -> GCLB -> nginx -> control plane -> gateway -> mock bank core -> back, from the tester's network"
   },
   "checks": [
@@ -95,7 +95,7 @@
       "check": "real model turn through the gateway",
       "passed": true,
       "model": "google/gemini-3.5-flash",
-      "answer": "A travel disruption assistant helps travelers quickly navigate and resolve unexpected itinerary changes, such as flight "
+      "answer": "A travel disruption assistant helps travelers quickly rebook and manage their itineraries when plans are delayed or canc"
     },
     {
       "check": "no valid card number in model output reaches the client",
@@ -106,7 +106,7 @@
     {
       "check": "ledger verifies (hash, HMAC, anchors)",
       "passed": true,
-      "entries": 80
+      "entries": 102
     },
     {
       "check": "agent kill switch enforced at the gateway",

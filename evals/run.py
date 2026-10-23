@@ -110,6 +110,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base-url", help="deployed demo, e.g. https://136.82.10.126.nip.io")
     ap.add_argument("--no-write", action="store_true")
+    ap.add_argument("--out", help="write results here instead of docs/results/guardrail_eval.json")
     ap.add_argument("--gate", action="store_true", help="fail on regressions against evals/baseline.json")
     ap.add_argument("--save-baseline", action="store_true")
     a = ap.parse_args()
@@ -122,7 +123,9 @@ def main() -> None:
     print(json.dumps(summary, indent=2))
     for cat, b in result["by_category"].items():
         print(f"{cat:20s} {b['correct']:3d}/{b['cases']:<3d} {b['rate']:.0%}  {'; '.join(b['misses'])[:200]}")
-    if not a.no_write and not a.base_url:
+    if a.out:
+        Path(a.out).write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    elif not a.no_write and not a.base_url:
         RESULTS.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     if a.save_baseline:
         BASELINE.write_text(json.dumps({"must_block_stopped": sorted(c["id"] for c in result["per_case"]
