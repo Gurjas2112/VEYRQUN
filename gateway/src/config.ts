@@ -32,6 +32,19 @@ export const ConfigSchema = z.object({
     .default("http://localhost:9101")
     .transform((s) => s.split(",").map((u) => u.trim()).filter(Boolean)),
   UPSTREAM_LLM_API_KEY: z.string().optional(),
+  UPSTREAM_LLM_AUTH: z.enum(["none", "bearer", "gcp"]).default("none"),
+  UPSTREAM_LLM_PATH: z.string().startsWith("/").default("/v1/chat/completions"),
+  UPSTREAM_MODEL_MAP: z.string().default("{}").transform((s, ctx) => {
+    try {
+      return z.record(z.string(), z.string()).parse(JSON.parse(s));
+    } catch {
+      ctx.addIssue({ code: "custom", message: "UPSTREAM_MODEL_MAP must be JSON {client_model: upstream_model}" });
+      return z.NEVER;
+    }
+  }),
+  GCP_METADATA_TOKEN_URL: z.url().default(
+    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"),
+  LLM_DAILY_BUDGET_MINOR: z.coerce.number().int().positive().optional(),
   UPSTREAM_MCP_URL: z.url().default("http://localhost:9102/mcp"),
   UPSTREAM_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(2_000),
   UPSTREAM_TOTAL_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
@@ -57,7 +70,7 @@ export const ConfigSchema = z.object({
       JSON.stringify({
         "mock-model": { input_per_mtok: 0.5, output_per_mtok: 1.5 },
         "gpt-4o-mini": { input_per_mtok: 0.15, output_per_mtok: 0.6 },
-        "gemini-2.5-flash": { input_per_mtok: 0.3, output_per_mtok: 2.5 },
+        "gemini-3.5-flash": { input_per_mtok: 1.5, output_per_mtok: 9.0 },
       }),
     )
     .transform((s, ctx) => {

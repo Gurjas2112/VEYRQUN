@@ -133,3 +133,12 @@ describe("tool calls count as message text", () => {
     expect(text).toContain('{"card":"4111"}');
   });
 });
+
+describe("billed output tokens", () => {
+  it("counts reasoning tokens hidden in total - prompt", async () => {
+    const { billedOutputTokens } = await import("../src/routes/chat.js");
+    expect(billedOutputTokens({ prompt_tokens: 5, completion_tokens: 1, total_tokens: 102 })).toBe(97);
+    expect(billedOutputTokens({ prompt_tokens: 5, completion_tokens: 7 })).toBe(7);
+    expect(billedOutputTokens({ prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 })).toBe(7);
+  });
+});

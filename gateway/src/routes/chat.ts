@@ -8,6 +8,7 @@ import type { Context } from "../pipeline.js";
 import { StreamScanner } from "../stream-scan.js";
 import { explainFor, remember } from "../explain.js";
 import { callUpstream, UpstreamTimeout } from "../upstream.js";
+import { BudgetExhausted, upstreamModel } from "../llm-upstream.js";
 import type { Deps } from "../app.js";
 import { authenticate, sendGoverned } from "./common.js";
 
@@ -25,7 +26,15 @@ type ChatChunk = {
   choices?: Array<{ delta?: { content?: string; tool_calls?: ToolCall[] }; index?: number; finish_reason?: string | null }>;
   usage?: Usage;
 };
-type Usage = { prompt_tokens?: number; completion_tokens?: number };
+type Usage = { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+
+/** Billed output tokens. Reasoning models (e.g. Gemini 3.x) bill "thinking" tokens that are only visible as
+ * total - prompt, not in completion_tokens, so metering on completion_tokens alone would undercount. */
+export function billedOutputTokens(u: Usage): number {
+  const completion = u.completion_tokens ?? 0;
+  if (u.total_tokens !== undefined && u.prompt_tokens !== undefined) return Math.max(completion, u.total_tokens - u.prompt_tokens);
+  return completion;
+}
 
 const redactText = (text: string, classes: Set<string>): string => redact(text, classify(text).spans, classes);
 
@@ -82,9 +91,24 @@ export function registerChat(app: FastifyInstance, deps: Deps): void {
     remember(req, result.ctx);
     if (result.kind === "respond") return sendGoverned(reply, result, deps);
     const ctx = result.ctx;
-    const outgoing = { ...body, messages: redactMessages(body.messages as ChatMessage[], ctx.requestRedactions) };
+    const outgoing = { ...body, model: upstreamModel(deps.cfg.UPSTREAM_MODEL_MAP, body.model),
+      messages: redactMessages(body.messages as ChatMessage[], ctx.requestRedactions) };
     const headers: Record<string, string> = { "content-type": "application/json" };
-    if (deps.cfg.UPSTREAM_LLM_API_KEY) headers.authorization = `Bearer ${deps.cfg.UPSTREAM_LLM_API_KEY}`;
+    try {
+      await deps.llmBudget.reserve(ctx.amountMinor);
+      const auth = await deps.llmToken.header();
+      if (auth) headers.authorization = auth;
+    } catch (err) {
+      if (ctx.reservation) await deps.counters.release(ctx.reservation);
+      const exhausted = err instanceof BudgetExhausted;
+      if (!exhausted) await deps.llmBudget.adjust(-ctx.amountMinor);
+      ctx.effectiveOutcome = "block";
+      ctx.decision = { ...ctx.decision, outcome: "block", rule_id: exhausted ? "llm_budget_exhausted" : "llm_credentials_unavailable" };
+      await deps.pipeline.finish(ctx, { upstream_status: null });
+      return reply.code(exhausted ? 429 : 503).header("x-veyrqun-decision-id", ctx.decisionId)
+        .send({ error: { type: exhausted ? "llm_budget_exhausted" : "upstream_unavailable", decision_id: ctx.decisionId } });
+    }
+    const budgeted = ctx.amountMinor;
     const governMs = Number(process.hrtime.bigint() - t0) / 1e6;
 
     const abort = new AbortController();
@@ -92,12 +116,13 @@ export function registerChat(app: FastifyInstance, deps: Deps): void {
     const tUp = process.hrtime.bigint();
     let upstream;
     try {
-      upstream = await callUpstream(deps.cfg.UPSTREAM_LLM_URLS, "/v1/chat/completions", {
+      upstream = await callUpstream(deps.cfg.UPSTREAM_LLM_URLS, deps.cfg.UPSTREAM_LLM_PATH, {
         body: JSON.stringify(outgoing), headers, idempotent: true, signal: abort.signal,
         connectTimeoutMs: deps.cfg.UPSTREAM_CONNECT_TIMEOUT_MS, totalTimeoutMs: deps.cfg.UPSTREAM_TOTAL_TIMEOUT_MS,
       });
     } catch (err) {
       if (ctx.reservation) await deps.counters.release(ctx.reservation);
+      await deps.llmBudget.adjust(-budgeted);
       const timeout = err instanceof UpstreamTimeout;
       await deps.pipeline.finish(ctx, { upstream_status: timeout ? 504 : 502 });
       return reply.code(timeout ? 504 : 502).header("x-veyrqun-decision-id", ctx.decisionId)
@@ -106,6 +131,7 @@ export function registerChat(app: FastifyInstance, deps: Deps): void {
     const { res } = upstream;
     if (res.statusCode >= 400) {
       if (ctx.reservation) await deps.counters.release(ctx.reservation);
+      await deps.llmBudget.adjust(-budgeted);
       const errBody = await res.body.text();
       await deps.pipeline.finish(ctx, { upstream_status: res.statusCode });
       return reply.code(res.statusCode).header("x-veyrqun-decision-id", ctx.decisionId).type("application/json").send(errBody);
@@ -150,8 +176,9 @@ export function registerChat(app: FastifyInstance, deps: Deps): void {
 /** Replace the pre-call estimate with the real cost from `usage`, in the counters and in the event. */
 async function settleUsage(deps: Deps, ctx: Context, usage: Usage | undefined, price: ModelPrice): Promise<void> {
   if (!usage || usage.prompt_tokens === undefined || usage.completion_tokens === undefined) return;
-  const actual = costMinor(price, usage.prompt_tokens, usage.completion_tokens);
+  const actual = costMinor(price, usage.prompt_tokens, billedOutputTokens(usage));
   if (ctx.reservation) await deps.counters.adjust(ctx.reservation, actual);
+  await deps.llmBudget.adjust(actual - ctx.amountMinor);
   ctx.timings.estimate_minor = ctx.amountMinor;
   ctx.amountMinor = actual;
 }

@@ -9,6 +9,7 @@ import { ControlChannel } from "./control.js";
 import { Counters } from "./counters.js";
 import { EventSink } from "./events.js";
 import { explainFor } from "./explain.js";
+import { LlmBudget, MetadataToken, StaticToken, type TokenSource } from "./llm-upstream.js";
 import { Metrics } from "./metrics.js";
 import { Pipeline } from "./pipeline.js";
 import { registerChat } from "./routes/chat.js";
@@ -27,6 +28,8 @@ export interface Deps {
   approvals: ApprovalsClient;
   metrics: Metrics;
   pipeline: Pipeline;
+  llmToken: TokenSource;
+  llmBudget: LlmBudget;
 }
 
 export function buildDeps(cfg: Config): Deps {
@@ -44,7 +47,10 @@ export function buildDeps(cfg: Config): Deps {
   const approvals = new ApprovalsClient(cfg.CONTROL_PLANE_URL, cfg.GATEWAY_SERVICE_TOKEN);
   const auth = new AgentAuth(jwksUrl(cfg), cfg.JWT_ISSUER, cfg.JWT_AUDIENCE);
   const pipeline = new Pipeline(cfg, bundles, counters, control, events, approvals, metrics);
-  return { cfg, redis, subscriber, auth, bundles, counters, control, events, approvals, metrics, pipeline };
+  const llmToken: TokenSource = cfg.UPSTREAM_LLM_AUTH === "gcp" ? new MetadataToken(cfg.GCP_METADATA_TOKEN_URL)
+    : new StaticToken(cfg.UPSTREAM_LLM_AUTH === "bearer" || cfg.UPSTREAM_LLM_API_KEY ? cfg.UPSTREAM_LLM_API_KEY : undefined);
+  const llmBudget = new LlmBudget(redis, cfg.LLM_DAILY_BUDGET_MINOR);
+  return { cfg, redis, subscriber, auth, bundles, counters, control, events, approvals, metrics, pipeline, llmToken, llmBudget };
 }
 
 export async function buildApp(deps: Deps): Promise<FastifyInstance> {

@@ -19,7 +19,8 @@ COPY --from=build --chown=root:root /src/node_modules ./node_modules
 COPY --from=build --chown=root:root /src/dist ./dist
 COPY --from=build --chown=root:root /src/package.json ./package.json
 COPY --chown=root:root policies/lua /app/policies/lua
-USER node
+# Numeric uid (1000 = node) so Kubernetes runAsNonRoot can verify it.
+USER 1000:1000
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=2s CMD wget -qO- http://127.0.0.1:8080/healthz || exit 1
 CMD ["node", "dist/index.js"]

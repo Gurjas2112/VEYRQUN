@@ -6,7 +6,8 @@ COPY gateway/package.json gateway/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY gateway/tsconfig.json ./
 COPY gateway/src ./src
-USER node
+# Numeric uid (1000 = node) so Kubernetes runAsNonRoot can verify it.
+USER 1000:1000
 # MOCK=llm|mcp
 ENV MOCK=llm
 CMD ["sh", "-c", "if [ \"$MOCK\" = mcp ]; then exec npx tsx src/mock/bankcore-mcp.ts; else exec npx tsx src/mock/llm.ts; fi"]

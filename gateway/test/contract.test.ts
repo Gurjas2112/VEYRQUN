@@ -352,6 +352,26 @@ describe("failure-mode contract", () => {
     expect(benign.status).toBe(200);
   });
 
+  it("global model budget exhausted -> 429 llm_budget_exhausted, recorded as a block; model names are mapped", async () => {
+    const capped = await startHarness({ LLM_DAILY_BUDGET_MINOR: "3", UPSTREAM_MODEL_MAP: '{"mock-model":"vendor/mock-model"}' });
+    try {
+      const token = await capped.cp.token("travel_agent_01");
+      const first = await post2(capped, "/v1/chat/completions", chat("hi", { max_tokens: 100 }), token);
+      expect(first.status).toBe(200);
+      expect(first.json.model).toBe("vendor/mock-model");
+      let refused;
+      for (let i = 0; i < 10 && !refused; i++) {
+        const r = await post2(capped, "/v1/chat/completions", chat("hi", { max_tokens: 100 }), token);
+        if (r.status === 429) refused = r;
+      }
+      expect(refused?.json.error).toMatchObject({ type: "llm_budget_exhausted" });
+      const event = JSON.parse((await capped.redis.xrange("vq:decisions", "-", "+")).at(-1)![1][1]!);
+      expect(event).toMatchObject({ effective_outcome: "block", rule_id: "llm_budget_exhausted" });
+    } finally {
+      await capped.close();
+    }
+  });
+
   it("row 10: audit backlog over threshold -> strict mode 503, async mode allows", async () => {
     const strict = await startHarness({ AUDIT_MODE: "strict", AUDIT_BACKLOG_THRESHOLD: "5" });
     try {

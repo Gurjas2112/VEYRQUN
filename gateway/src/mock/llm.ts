@@ -1,7 +1,7 @@
 /**
  * Deterministic, offline OpenAI-compatible mock LLM (CI, demos, load tests). No API keys, no network.
  * Triggers in the last user message:
- *   LEAK_CARD  -> answer contains a Luhn-valid card number split across stream chunks
+ *   LEAK_CARD (or "test card number") -> answer contains a Luhn-valid card number split across stream chunks
  *   LEAK_EMAIL -> answer contains an email address
  *   SLOW       -> waits 3 s before answering (timeout tests)
  *   FAIL500    -> HTTP 500 (failover tests)
@@ -11,7 +11,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 const CARD = "4111 1111 1111 1111";
 
 function answerFor(prompt: string): string {
-  if (prompt.includes("LEAK_CARD")) return `Sure, the card on file is ${CARD}, expiring soon.`;
+  if (prompt.includes("LEAK_CARD") || /test card number/i.test(prompt)) return `Sure, the card on file is ${CARD}, expiring soon.`;
   if (prompt.includes("LEAK_EMAIL")) return "You can reach the customer at jane.doe@example.com today.";
   return `Acknowledged: ${prompt.slice(0, 80)}`;
 }
