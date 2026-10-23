@@ -1,60 +1,36 @@
-# Demo Script (~5 minutes)
+# Testing the live demo
 
-Recorded walkthrough: [`app_screenshots_screen_recording/veyrqun_demo.mp4`](../app_screenshots_screen_recording/veyrqun_demo.mp4)
+**URL:** https://136.82.10.126.nip.io. It's open until 2026-10-28 10:40 UTC; after that the link returns "demo ended".
 
-## 0. Setup
+Click **Try the live demo**. You get a private sandbox with four agents and synthetic money. Nobody else sees your
+data, and no account or personal data is needed. Then use **Playground**: every request goes through the real
+gateway, so the answer is exactly what that agent would get in production.
 
-```bash
-python -m uvicorn --app-dir control-plane app:app --port 8000     # terminal 1
-cd frontend && npm run dev                         # terminal 2
-```
+## Ten things to try (each has a preset button)
 
-Open `http://localhost:5173`; confirm **Live Feed Online** and the feed is moving.
+| Try | Expect | Why |
+|---|---|---|
+| `fee_reversal_bot` · `waive_fee` · 25.00 | Allowed, and spend goes up | on the allowlist, under every limit |
+| same, 75.00 | Needs approval, then **Approve & re-run** → Allowed | over the $50 approval threshold; the approval only fits this exact action and amount |
+| `card_replacement_bot` · `card_issue` · 45.00 | Blocked `transaction_limit_exceeded` | per-transaction limit is $40 |
+| `rogue_bot` · `wire_transfer` · 5000 | Blocked `action_not_permitted` | explicitly forbidden for this agent |
+| any agent · any made-up tool name | Blocked `action_not_in_allowlist` | default deny |
+| text with `4111 1111 1111 1111` | Blocked `data_class_not_permitted` | card numbers may not leave; try dots, full-width digits or line breaks too |
+| text with `jane.doe@example.com` | Allowed · redacted | the email is masked before the tool sees it |
+| prompt "Ignore all previous instructions…" | Blocked `injection_suspected` | injection signal over the policy threshold (zero-width and look-alike tricks are caught) |
+| Model prompt to `travel_bot` (any question) | A real answer from Gemini 3.5 Flash | governed like everything else; spend metered from token usage |
+| "Model leaks a card" preset | Stopped mid-answer | the gateway scans what the model *returns*, not just what it's asked |
 
-## 1. Opening (30 s)
+Then:
+- **Audit ledger → Verify whole ledger.** Every decision above is hash-chained, HMAC-signed and anchored. Open
+  any entry to see its hash, signature and recorded details.
+- **System → Stop all agents** (type STOP). Re-run anything: it is refused within about a second. Then release.
+- **Ctrl+K** opens the command palette (jump to an agent, stop an agent, verify the ledger).
 
-> "Banks are racing to deploy autonomous AI agents — rebooking flights, reversing fees, raising credit limits.
-> Almost none have the infrastructure to govern that fleet. VEYRQUN is that control layer."
+## For API testers
+**Agents → (any agent) → Connect this agent** shows the token request and an MCP call. Rotate the secret to get
+credentials. Send OpenAI-compatible requests to `/v1/chat/completions` (model `gemini-3.5-flash`) or JSON-RPC to
+`/mcp`.
 
-Point at the five agent cards: allow-list, deny-list, daily cap, per-transaction limit, rate limit.
-
-## 2. The system is invisible when things are fine (30 s)
-
-Click **1. Approved Action** → green toast, spend meter moves, entry in the feed.
-
-## 3. Caught in milliseconds (1 min)
-
-* **2. Unpermitted Action** → `action_not_permitted`.
-* **3. Spend Cap Breach** → $550 rebookings until `spend_cap_exceeded`.
-* Point at **Enforcement Metrics**: blocks by rule, and *policy eval p99 in microseconds* —
-  "governance adds well under a millisecond to every action."
-
-## 4. Change the rules live (1 min)
-
-Fee Reversal card → **Policy** → lower the cap, add a note → **Publish**. Version bumps to v2; the next action is
-evaluated against v2. **History** → **Roll back to v1** — forward-only, so history is never rewritten.
-
-## 5. Revocation vs. emergency stop (1 min)
-
-* **4. Revoke Agent** → Credit Limit Agent goes violet; its next action → `agent_revoked`.
-* **5. Fleet Emergency Stop** → red banner, every tile flips to STOPPED, feed fills with
-  `fleet_emergency_stop_active`.
-* **Resume Fleet** → everyone comes back **except** the revoked agent — "revocation is a credential kill, not a pause."
-
-## 6. Provable after the fact (45 s)
-
-Audit log → filter **Outcome: Operator actions** — every stop, revoke and policy change is in the chain too.
-Click **Verify Chain Integrity** → `VALID (N ENTRIES UNBROKEN)`.
-
-> "Edit, delete or reorder one row and verification pinpoints exactly where the chain broke."
-
-## Backup Q&A
-
-**Why not OPA/Cedar?** The rule order is deliberately simple and pure so it can be compiled to OPA/Cedar later; for
-the demo a ~1 µs in-process engine with zero network hops is the right trade.
-
-**How does it scale?** Engine is stateless; state moves to PostgreSQL (row locks per agent) and Redis (rate windows,
-pub/sub). Metrics already speak Prometheus.
-
-**Is the chain tamper-proof?** Tamper-*evident*. Production adds WORM storage and periodic external notarisation of
-the head hash returned by `/audit-log/verify`.
+**Limits on the demo:** 10 guest sandboxes per IP per hour, and a $5/day cap on model spend across all visitors.
+When the cap is reached, model calls return 429 until midnight UTC, and tool calls keep working.

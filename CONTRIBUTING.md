@@ -8,7 +8,7 @@ differently, so use `npm install` (not `npm ci`) if you develop on a newer Node.
 
 ```bash
 pip install -r requirements-dev.txt
-npm --prefix frontend install
+npm --prefix frontend install && npm --prefix gateway install
 cp .env.example .env          # fill in local values; .env is git-ignored
 ```
 
@@ -17,7 +17,9 @@ cp .env.example .env          # fill in local values; .env is git-ignored
 ```bash
 python -m pytest                       # control-plane tests (needs: docker compose up -d postgres redis)
 npm --prefix gateway test              # gateway unit + failure-contract tests (needs Redis)
-python -m pytest e2e                   # Keycloak login flows + control-plane/gateway interop
+python -m pytest e2e                   # Keycloak login flows, gateway interop, agent fleet, playground
+python -m evals.run --gate             # guardrail eval against the real gateway (CI regression gate)
+helm lint deploy/helm/veyrqun          # chart; CI also installs it on kind and runs helm test
 npm --prefix frontend run lint
 npm --prefix frontend run build
 ```
@@ -43,5 +45,4 @@ Context, Decision, Consequences, Alternatives considered.
 4. No made-up numbers. Every metric in the docs comes from a script that writes to `docs/results/*.json`.
 5. No secrets in git. Config comes from env vars, documented in `.env.example`. CI runs a secret scan.
 6. Money is never a float.
-
-The full specification is in [docs/AGENT_PROMPT.md](docs/AGENT_PROMPT.md).
+7. Every guardrail change re-runs `python -m evals.run`; the README quotes only its output.

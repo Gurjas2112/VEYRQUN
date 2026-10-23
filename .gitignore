@@ -71,11 +71,7 @@ tools/bin/
 # local dev identities (generated passwords/TOTP secrets)
 .dev-users.json
 
-# gateway build output & local logs
-gateway/dist/
-loadtest/k6-summary.json
-
-# gateway build output & local load-test output
+# gateway build output, load-test output, local e2e logs
 gateway/dist/
 loadtest/k6-summary.json
 e2e/*.log

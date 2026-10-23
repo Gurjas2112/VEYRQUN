@@ -75,9 +75,10 @@ def capture(base: str) -> None:
 
         def preset(label: str, name: str) -> None:
             page.get_by_role("button", name=label, exact=True).click()
-            page.get_by_role("button", name="Send through the gateway").click()
-            page.wait_for_selector("text=HTTP")
-            page.wait_for_timeout(400)
+            # Wait for this request's answer (a real model can take seconds), not for text already on the page.
+            with page.expect_response(lambda r: "/playground/run" in r.url, timeout=90_000):
+                page.get_by_role("button", name="Send through the gateway").click()
+            page.wait_for_timeout(600)
             shot(page, name)
 
         preset("Within policy", "playground_allowed")
@@ -86,8 +87,9 @@ def capture(base: str) -> None:
         preset("Prompt injection", "playground_prompt_injection")
         preset("Model leaks a card", "playground_output_leak_blocked")
         preset("Needs approval", "playground_needs_approval")
-        page.get_by_role("button", name="Approve & re-run").click()
-        page.wait_for_selector("text=in the signed ledger")
+        with page.expect_response(lambda r: "/playground/run" in r.url, timeout=90_000):
+            page.get_by_role("button", name="Approve & re-run").click()
+        page.wait_for_timeout(600)
         shot(page, "playground_approved_and_rerun")
         preset("Over the limit", "playground_over_limit")
 

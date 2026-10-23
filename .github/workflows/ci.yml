@@ -81,6 +81,8 @@ jobs:
         run: psql -h localhost -U veyrqun_owner -d veyrqun -f deploy/postgres/init/01-roles.sql
       - name: Lint
         run: ruff check .
+      - name: README results table matches docs/results
+        run: python scripts/render_results.py --check
       - name: Tests (Postgres + Redis integration, 10k-case Rego/Lua parity, migration validation)
         run: python -m pytest -q
 
