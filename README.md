@@ -178,11 +178,5 @@ These are stated plainly in [docs/Limitations.md](docs/Limitations.md). The most
 - The eval corpus is small and author-written.
 - Rotating an agent's secret doesn't yet revoke tokens already issued (15-minute lifetime).
 
-## Credits
 
-Started from [Aegis](https://github.com/infyier/aegis-governance) by **infyier** (American Express CodeStreet 2026,
-MIT), a single-file FastAPI policy API with a hash-chained log. VEYRQUN v2 and v3 are by **Gurjas Singh Gandhi**.
-v3 replaces almost all of it: the inline gateway, OPA policy, Postgres/Redis control plane, identity, signed audit
-pipeline, agents, guardrails, UI and Kubernetes deployment. The [CHANGELOG](CHANGELOG.md) lists exactly what was
-inherited, and both copyright lines are kept in [LICENSE](LICENSE). How AI coding tools were used:
-[docs/AI_WORKFLOW.md](docs/AI_WORKFLOW.md).
+
