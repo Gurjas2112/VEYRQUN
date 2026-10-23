@@ -1,0 +1,128 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $fn := include "vq.fullname" . }}
+{{- $sel := dict "app.kubernetes.io/instance" .Release.Name }}
+# Default deny for every pod of this release, then only the flows the architecture needs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-default-deny
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  podSelector: { matchLabels: {{ toJson $sel }} }
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-dns
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  podSelector: { matchLabels: {{ toJson $sel }} }
+  policyTypes: [Egress]
+  egress:
+    - ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
+---
+# Any pod of the release may reach the data stores and the control plane (the API is authenticated anyway).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-internal-egress
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  podSelector: { matchLabels: {{ toJson $sel }} }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ podSelector: { matchLabels: {{ include "vq.selector" (dict "root" . "component" "postgres") | fromYaml | toJson }} } }]
+      ports: [{ port: 5432 }]
+    - to: [{ podSelector: { matchLabels: {{ include "vq.selector" (dict "root" . "component" "redis") | fromYaml | toJson }} } }]
+      ports: [{ port: 6379 }]
+    - to: [{ podSelector: { matchLabels: {{ include "vq.selector" (dict "root" . "component" "control-plane") | fromYaml | toJson }} } }]
+      ports: [{ port: 8000 }]
+    - to:
+        - podSelector: { matchLabels: {{ include "vq.selector" (dict "root" . "component" "gateway") | fromYaml | toJson }} }
+        - podSelector: { matchLabels: {{ include "vq.selector" (dict "root" . "component" "dashboard") | fromYaml | toJson }} }
+      ports: [{ port: 8080 }]
+    {{- range .Values.networkPolicy.datastoreEgressCidrs }}
+    - to: [{ ipBlock: { cidr: {{ . }} } }]
+    {{- end }}
+---
+# Dashboard (nginx entry point): reachable from outside the cluster (load balancer / ingress).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-dashboard-ingress
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  podSelector: { matchLabels: {{ include "vq.selector" (dict "root" . "component" "dashboard") | fromYaml | toJson }} }
+  policyTypes: [Ingress]
+  ingress: [{ ports: [{ port: 8080 }] }]
+---
+# Control plane and gateway accept traffic from inside the release only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-internal-ingress
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/instance, operator: In, values: [{{ .Release.Name | quote }}] }
+      - { key: app.kubernetes.io/component, operator: In, values: [control-plane, gateway, postgres, redis] }
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{ podSelector: { matchLabels: {{ toJson $sel }} } }]
+---
+# Mocks accept traffic from the gateway only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-mocks-ingress
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/instance, operator: In, values: [{{ .Release.Name | quote }}] }
+      - { key: app.kubernetes.io/component, operator: In, values: [mock-llm, mock-mcp] }
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{ podSelector: { matchLabels: {{ include "vq.selector" (dict "root" . "component" "gateway") | fromYaml | toJson }} } }]
+---
+# The gateway is the ONLY component allowed to reach model and tool upstreams (and the GKE metadata server
+# for Workload Identity tokens). Agents hold no provider keys; nothing else gets internet egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-gateway-egress
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  podSelector: { matchLabels: {{ include "vq.selector" (dict "root" . "component" "gateway") | fromYaml | toJson }} }
+  policyTypes: [Egress]
+  egress:
+    {{- if .Values.mocks.enabled }}
+    - to:
+        - podSelector: { matchLabels: {{ include "vq.selector" (dict "root" . "component" "mock-llm") | fromYaml | toJson }} }
+        - podSelector: { matchLabels: {{ include "vq.selector" (dict "root" . "component" "mock-mcp") | fromYaml | toJson }} }
+      ports: [{ port: 9101 }, { port: 9102 }]
+    {{- end }}
+    - ports: [{ port: 443 }]
+    - to: [{ ipBlock: { cidr: 169.254.169.254/32 } }, { ipBlock: { cidr: 169.254.169.252/32 } }]
+      ports: [{ port: 80 }, { port: 988 }]
+{{- if .Values.networkPolicy.controlPlaneEgressCidrs }}
+---
+# Control plane: HTTPS to the OIDC provider only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-control-plane-egress
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  podSelector: { matchLabels: {{ include "vq.selector" (dict "root" . "component" "control-plane") | fromYaml | toJson }} }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        {{- range .Values.networkPolicy.controlPlaneEgressCidrs }}
+        - ipBlock: { cidr: {{ . }} }
+        {{- end }}
+      ports: [{ port: 443 }]
+{{- end }}
+{{- end }}

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: veyrqun
+description: Inline governance gateway for AI agents (gateway, control plane, audit writer, dashboard)
+type: application
+version: 0.1.0
+appVersion: "3.0.0"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/Gurjas2112/VEYRQUN
+sources: [https://github.com/Gurjas2112/VEYRQUN]
+keywords: [ai-governance, opa, llm-gateway, mcp, audit]

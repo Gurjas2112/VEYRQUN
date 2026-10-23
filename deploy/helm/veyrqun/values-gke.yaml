@@ -1,0 +1,68 @@
+# Public, time-limited demo on GKE Autopilot (us-central1). Install:
+#   helm upgrade --install veyrqun deploy/helm/veyrqun -n veyrqun --create-namespace \
+#     -f deploy/helm/veyrqun/values-gke.yaml \
+#     --set image.tag=<git-sha> --set publicUrl=https://<ip>.nip.io --set ingress.host=<ip>.nip.io \
+#     --set demo.expiresAt=<RFC3339> --set demo.scaleDownSchedule="<min> <hour> <day> <month> *"
+# Teardown: docs/runbooks/demo-teardown.md
+image:
+  registry: us-central1-docker.pkg.dev/veyrquindev/veyrqun
+  pullPolicy: IfNotPresent
+
+controlPlane:
+  replicas: 1
+  extraEnv:
+    PLAYGROUND_MODEL: gemini-3.5-flash
+    SSO_ENABLED: "false"         # no IdP in the demo cluster; Keycloak or any OIDC provider plugs in for real use
+  env: production              # strict config checks; guests still get their own sandbox workspaces
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 512Mi }
+
+gateway:
+  # A real model behind the gateway: Gemini 3.5 Flash on Vertex AI, authenticated with Workload Identity (no keys).
+  # It is governed like any upstream and never makes a decision.
+  upstream:
+    llmUrls: https://aiplatform.googleapis.com/v1/projects/veyrquindev/locations/global/endpoints/openapi
+    llmPath: /chat/completions
+    llmAuth: gcp
+    modelMap: { gemini-3.5-flash: google/gemini-3.5-flash }
+  # Only priced models are accepted. Rates from public listings (USD per 1M tokens); erring high is deliberate.
+  modelPrices: '{"gemini-3.5-flash": {"input_per_mtok": 1.5, "output_per_mtok": 9.0}}'
+  llmDailyBudgetMinor: "500"   # hard cap for the whole demo: USD 5.00 of model spend per day
+  autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 4, targetCPUUtilizationPercentage: 70 }
+  resources:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits: { memory: 256Mi }
+
+auditWriter:
+  replicas: 1
+  anchorIntervalS: 300
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 256Mi }
+
+dashboard:
+  replicas: 1
+
+postgres:
+  storage: 10Gi
+  storageClassName: standard-rwo
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 512Mi }
+
+redis:
+  storageClassName: standard-rwo
+
+demo:
+  enabled: true
+
+ingress:
+  enabled: true
+  className: gce
+  gke:
+    staticIpName: veyrqun-demo-ip
+    managedCertificate: true
+
+networkPolicy:
+  enabled: true

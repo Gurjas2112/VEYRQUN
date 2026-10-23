@@ -1,0 +1,107 @@
+{{- if and .Values.demo.enabled .Values.demo.scaleDownSchedule }}
+{{- $fn := include "vq.fullname" . }}
+# Cost guard for the time-limited public demo: once DEMO_EXPIRES_AT has passed, scale every Deployment and
+# StatefulSet of this release to zero. The app already refuses guests after expiry (ADR 0014); this stops paying
+# for idle pods. Least privilege: a namespaced Role that can only read and scale workloads.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fn }}-demo-expiry
+  labels: {{- include "vq.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fn }}-demo-expiry
+  labels: {{- include "vq.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets]
+    verbs: [list]
+  - apiGroups: [apps]
+    resources: [deployments/scale, statefulsets/scale]
+    verbs: [patch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [list, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fn }}-demo-expiry
+  labels: {{- include "vq.labels" . | nindent 4 }}
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ $fn }}-demo-expiry }
+subjects: [{ kind: ServiceAccount, name: {{ $fn }}-demo-expiry, namespace: {{ .Release.Namespace }} }]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $fn }}-demo-expiry
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.demo.scaleDownSchedule | quote }}
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        metadata:
+          labels: {{ include "vq.selector" (dict "root" . "component" "demo-expiry") | fromYaml | toJson }}
+        spec:
+          serviceAccountName: {{ $fn }}-demo-expiry
+          restartPolicy: OnFailure
+          securityContext: {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: scale-to-zero
+              image: {{ include "vq.image" (dict "root" . "name" .Values.image.names.controlPlane) }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              env:
+                - { name: DEMO_EXPIRES_AT, value: {{ .Values.demo.expiresAt | quote }} }
+                - { name: NAMESPACE, value: {{ .Release.Namespace | quote }} }
+                - { name: SELECTOR, value: "app.kubernetes.io/instance={{ .Release.Name }}" }
+              command: ["python", "-c"]
+              args:
+                - |
+                  import json, os, ssl, sys, urllib.parse, urllib.request
+                  from datetime import UTC, datetime
+                  expires = datetime.fromisoformat(os.environ["DEMO_EXPIRES_AT"].replace("Z", "+00:00"))
+                  if datetime.now(UTC) < expires:
+                      print("demo still open until", expires.isoformat()); sys.exit(0)
+                  sa = "/var/run/secrets/kubernetes.io/serviceaccount"
+                  token = open(f"{sa}/token").read()
+                  ctx = ssl.create_default_context(cafile=f"{sa}/ca.crt")
+                  base = f"https://kubernetes.default.svc/apis"
+                  ns, sel = os.environ["NAMESPACE"], urllib.parse.quote(os.environ["SELECTOR"])
+                  def req(method, url, body=None, ctype="application/json"):
+                      r = urllib.request.Request(url, method=method, data=json.dumps(body).encode() if body else None,
+                                                 headers={"Authorization": f"Bearer {token}", "Content-Type": ctype})
+                      with urllib.request.urlopen(r, context=ctx, timeout=20) as resp:
+                          return json.load(resp)
+                  # HPAs would scale the gateway back up, so remove them first.
+                  for h in req("GET", f"{base}/autoscaling/v2/namespaces/{ns}/horizontalpodautoscalers?labelSelector={sel}")["items"]:
+                      req("DELETE", f"{base}/autoscaling/v2/namespaces/{ns}/horizontalpodautoscalers/{h['metadata']['name']}")
+                      print("deleted hpa", h["metadata"]["name"])
+                  for kind in ("deployments", "statefulsets"):
+                      for w in req("GET", f"{base}/apps/v1/namespaces/{ns}/{kind}?labelSelector={sel}")["items"]:
+                          name = w["metadata"]["name"]
+                          req("PATCH", f"{base}/apps/v1/namespaces/{ns}/{kind}/{name}/scale", {"spec": {"replicas": 0}},
+                              "application/merge-patch+json")
+                          print("scaled to zero:", kind, name)
+              resources: { requests: { cpu: 50m, memory: 96Mi }, limits: { memory: 192Mi } }
+              securityContext: {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-demo-expiry-egress
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  podSelector: { matchLabels: {{ include "vq.selector" (dict "root" . "component" "demo-expiry") | fromYaml | toJson }} }
+  policyTypes: [Egress]
+  egress: [{ ports: [{ port: 443 }] }]   # Kubernetes API
+{{- end }}
+{{- end }}

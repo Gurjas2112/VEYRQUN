@@ -1,0 +1,68 @@
+{{- if .Values.ingress.enabled }}
+{{- $fn := include "vq.fullname" . }}
+{{- $gce := eq .Values.ingress.className "gce" }}
+{{- if $gce }}
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ $fn }}-dashboard
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  healthCheck: { type: HTTP, requestPath: /healthz, port: 8080 }
+  timeoutSec: 300            # model streams can be long
+  connectionDraining: { drainingTimeoutSec: 30 }
+---
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: {{ $fn }}
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  redirectToHttps: { enabled: true }
+---
+{{- if .Values.ingress.gke.managedCertificate }}
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: {{ $fn }}
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  domains: [{{ required "ingress.host is required for a managed certificate" .Values.ingress.host | quote }}]
+---
+{{- end }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fn }}
+  labels: {{- include "vq.labels" . | nindent 4 }}
+  annotations:
+    {{- if $gce }}
+    kubernetes.io/ingress.class: gce
+    networking.gke.io/v1beta1.FrontendConfig: {{ $fn }}
+    {{- with .Values.ingress.gke.staticIpName }}
+    kubernetes.io/ingress.global-static-ip-name: {{ . }}
+    {{- end }}
+    {{- if .Values.ingress.gke.managedCertificate }}
+    networking.gke.io/managed-certificates: {{ $fn }}
+    {{- end }}
+    {{- end }}
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if and .Values.ingress.className (not $gce) }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  defaultBackend:
+    service: { name: {{ $fn }}-dashboard, port: { number: 80 } }
+  {{- with .Values.ingress.host }}
+  rules:
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ $fn }}-dashboard, port: { number: 80 } } }
+  {{- end }}
+{{- end }}

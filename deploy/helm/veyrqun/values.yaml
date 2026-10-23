@@ -1,0 +1,121 @@
+# Default values work on any cluster (kind, GKE, EKS, AKS) with bundled Postgres + Redis and mock upstreams.
+# Production: point postgres/redis at managed services, bring your own secret, set the real LLM upstream.
+
+image:
+  registry: ""                 # e.g. us-central1-docker.pkg.dev/<project>/veyrqun ; empty = local images (kind load)
+  tag: ""                      # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+  names:
+    controlPlane: veyrqun/control-plane
+    gateway: veyrqun/gateway
+    dashboard: veyrqun/dashboard
+    mocks: veyrqun/mocks
+
+# Public URL users and agents reach (used for cookies, CORS/Origin checks and OIDC redirects).
+publicUrl: http://localhost:8080
+
+secrets:
+  # Name of an existing Secret with the keys listed in templates/secret.yaml. Empty = the chart generates one
+  # (random values, kept across upgrades via lookup). Never commit real values to a values file.
+  existingSecret: ""
+
+controlPlane:
+  replicas: 2
+  env: production              # VEYRQUN_ENV
+  logLevel: INFO
+  extraEnv: {}
+  resources:
+    requests: { cpu: 250m, memory: 384Mi }
+    limits: { memory: 768Mi }
+
+gateway:
+  replicas: 2
+  logLevel: info
+  auditMode: async             # async | strict (strict refuses traffic when the audit backlog is too large)
+  bundleMaxStalenessS: 300
+  upstream:
+    llmUrls: ""                # comma-separated; empty = the bundled mock LLM
+    llmAuth: none              # none | gcp (Workload Identity access token for Vertex AI)
+    llmPath: /v1/chat/completions   # Vertex OpenAI-compatible endpoint uses /chat/completions
+    modelMap: {}               # client model -> provider model id, e.g. {gemini-3.5-flash: google/gemini-3.5-flash}
+    mcpUrl: ""                 # empty = the bundled mock bank-core MCP server
+  modelPrices: ""              # JSON {model: {input_per_mtok, output_per_mtok}}; empty = gateway defaults
+  llmDailyBudgetMinor: ""      # hard global cap for model spend per day, minor units; empty = no extra cap
+  serviceAccount:
+    annotations: {}            # GKE Workload Identity: iam.gke.io/gcp-service-account: <gsa>@<project>.iam.gserviceaccount.com
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    minAvailable: 1
+  resources:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits: { memory: 512Mi }
+
+auditWriter:
+  replicas: 2                  # one leader (Redis lease), the rest stand by
+  anchorIntervalS: 300
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { memory: 384Mi }
+
+dashboard:
+  replicas: 2
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 128Mi }
+
+mocks:
+  enabled: true                # deterministic mock LLM + mock bank-core MCP (synthetic data only)
+  resources:
+    requests: { cpu: 50m, memory: 192Mi }
+    limits: { memory: 384Mi }
+
+postgres:
+  bundled: true                # false = use DATABASE_URL / MIGRATION_DATABASE_URL from the secret
+  image: pgvector/pgvector:pg17
+  storage: 10Gi
+  storageClassName: ""
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 1Gi }
+
+redis:
+  bundled: true                # false = use REDIS_URL from the secret
+  image: redis:7.4-alpine
+  storage: 1Gi
+  storageClassName: ""
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { memory: 256Mi }
+
+# Time-limited public demo (ADR 0014): anonymous guest sandboxes until expiresAt, then fail closed.
+demo:
+  enabled: false
+  expiresAt: ""                # RFC 3339, e.g. 2026-10-27T12:00:00Z
+  scaleDownSchedule: ""        # cron (UTC) at/after expiresAt: scales every workload to zero (cost guard)
+
+ingress:
+  enabled: false
+  className: ""                # "gce" on GKE; empty = cluster default
+  host: ""
+  gke:
+    staticIpName: ""           # reserved global static IP
+    managedCertificate: false  # Google-managed TLS cert for `host`
+  annotations: {}
+
+networkPolicy:
+  enabled: true                # default deny; only the gateway may reach model/tool upstreams
+  controlPlaneEgressCidrs: []  # HTTPS egress for the control plane (OIDC provider), e.g. [0.0.0.0/0]
+  datastoreEgressCidrs: []     # managed Postgres/Redis outside the cluster, e.g. [10.20.0.0/16]
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile: { type: RuntimeDefault }
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }

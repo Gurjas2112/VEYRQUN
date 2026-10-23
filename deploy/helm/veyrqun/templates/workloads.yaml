@@ -1,0 +1,314 @@
+{{- $fn := include "vq.fullname" . }}
+{{- $cpImage := include "vq.image" (dict "root" . "name" .Values.image.names.controlPlane) }}
+# ------------------------------------------------------------------ migrations (owner role, once per release)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $fn }}-migrate-{{ .Release.Revision }}
+  labels: {{- include "vq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+spec:
+  backoffLimit: 20
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels: {{- include "vq.selector" (dict "root" . "component" "migrate") | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ $cpImage }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["alembic", "upgrade", "head"]
+          env: {{- include "vq.cpEnv" . | nindent 12 }}
+          resources: { requests: { cpu: 100m, memory: 192Mi }, limits: { memory: 384Mi } }
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+# ------------------------------------------------------------------ control plane
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-control-plane
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "vq.selector" (dict "root" . "component" "control-plane") | nindent 4 }}
+  ports: [{ name: http, port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-control-plane
+  labels: {{- include "vq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+spec:
+  replicas: {{ .Values.controlPlane.replicas }}
+  selector:
+    matchLabels: {{- include "vq.selector" (dict "root" . "component" "control-plane") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "vq.selector" (dict "root" . "component" "control-plane") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include "vq.cpEnv" . | sha256sum | trunc 16 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers: {{- include "vq.waitMigrated" . | nindent 8 }}
+      containers:
+        - name: control-plane
+          image: {{ $cpImage }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+          env: {{- include "vq.cpEnv" . | nindent 12 }}
+          ports: [{ name: http, containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 15, failureThreshold: 4 }
+          startupProbe: { httpGet: { path: /health, port: http }, periodSeconds: 3, failureThreshold: 40 }
+          resources: {{- toYaml .Values.controlPlane.resources | nindent 12 }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+# ------------------------------------------------------------------ audit writer (one leader via Redis lease)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-audit-writer
+  labels: {{- include "vq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: audit-writer
+spec:
+  replicas: {{ .Values.auditWriter.replicas }}
+  selector:
+    matchLabels: {{- include "vq.selector" (dict "root" . "component" "audit-writer") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "vq.selector" (dict "root" . "component" "audit-writer") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers: {{- include "vq.waitMigrated" . | nindent 8 }}
+      containers:
+        - name: audit-writer
+          image: {{ $cpImage }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "veyrqun.audit_writer"]
+          env: {{- include "vq.cpEnv" . | nindent 12 }}
+          # Alive = heartbeat written to Redis within the last 60 s (leader or standby both report).
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import os,sys,time,redis; h=redis.Redis.from_url(os.environ['REDIS_URL']).hget('vq:audit-writer:status','heartbeat'); sys.exit(0 if h and time.time()-int(h)<60 else 1)"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources: {{- toYaml .Values.auditWriter.resources | nindent 12 }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+# ------------------------------------------------------------------ gateway (data plane)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fn }}-gateway
+  labels: {{- include "vq.labels" . | nindent 4 }}
+  {{- with .Values.gateway.serviceAccount.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-gateway
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "vq.selector" (dict "root" . "component" "gateway") | nindent 4 }}
+  ports: [{ name: http, port: 8080, targetPort: 8080 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-gateway
+  labels: {{- include "vq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  {{- if not .Values.gateway.autoscaling.enabled }}
+  replicas: {{ .Values.gateway.replicas }}
+  {{- end }}
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector:
+    matchLabels: {{- include "vq.selector" (dict "root" . "component" "gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "vq.selector" (dict "root" . "component" "gateway") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $fn }}-gateway
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: 40   # let in-flight streams finish
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {{- include "vq.selector" (dict "root" . "component" "gateway") | nindent 14 }}
+      containers:
+        - name: gateway
+          image: {{ include "vq.image" (dict "root" . "name" .Values.image.names.gateway) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - { name: NODE_ENV, value: production }
+            - { name: LOG_LEVEL, value: {{ .Values.gateway.logLevel | quote }} }
+            - { name: CONTROL_PLANE_URL, value: "http://{{ $fn }}-control-plane:8000" }
+            - name: GATEWAY_SERVICE_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ include "vq.secretName" . }}, key: bundle-service-token } }
+            {{- if .Values.redis.bundled }}
+            - { name: REDIS_URL, value: "redis://{{ $fn }}-redis:6379/0" }
+            {{- else }}
+            - name: REDIS_URL
+              valueFrom: { secretKeyRef: { name: {{ include "vq.secretName" . }}, key: redis-url } }
+            {{- end }}
+            - { name: UPSTREAM_LLM_URLS, value: {{ .Values.gateway.upstream.llmUrls | default (printf "http://%s-mock-llm:9101" $fn) | quote }} }
+            - { name: UPSTREAM_MCP_URL, value: {{ .Values.gateway.upstream.mcpUrl | default (printf "http://%s-mock-mcp:9102/mcp" $fn) | quote }} }
+            - { name: UPSTREAM_LLM_AUTH, value: {{ .Values.gateway.upstream.llmAuth | quote }} }
+            - { name: UPSTREAM_LLM_PATH, value: {{ .Values.gateway.upstream.llmPath | quote }} }
+            - { name: UPSTREAM_MODEL_MAP, value: {{ .Values.gateway.upstream.modelMap | toJson | quote }} }
+            - { name: AUDIT_MODE, value: {{ .Values.gateway.auditMode | quote }} }
+            - { name: BUNDLE_MAX_STALENESS_S, value: {{ .Values.gateway.bundleMaxStalenessS | quote }} }
+            {{- with .Values.gateway.modelPrices }}
+            - { name: MODEL_PRICES, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .Values.gateway.llmDailyBudgetMinor }}
+            - { name: LLM_DAILY_BUDGET_MINOR, value: {{ . | quote }} }
+            {{- end }}
+          ports: [{ name: http, containerPort: 8080 }]
+          readinessProbe: { httpGet: { path: /readyz, port: http }, periodSeconds: 5, failureThreshold: 2 }
+          livenessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 10, failureThreshold: 3 }
+          lifecycle:
+            preStop: { sleep: { seconds: 5 } }   # drop out of endpoints before shutting down
+          resources: {{- toYaml .Values.gateway.resources | nindent 12 }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+{{- if .Values.gateway.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $fn }}-gateway
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: {{ $fn }}-gateway }
+  minReplicas: {{ .Values.gateway.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.gateway.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: {{ .Values.gateway.autoscaling.targetCPUUtilizationPercentage }} } }
+{{- end }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $fn }}-gateway
+  labels: {{- include "vq.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.gateway.pdb.minAvailable }}
+  selector:
+    matchLabels: {{- include "vq.selector" (dict "root" . "component" "gateway") | nindent 6 }}
+---
+# ------------------------------------------------------------------ dashboard (nginx: UI + /api + /v1 + /mcp)
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-dashboard
+  labels: {{- include "vq.labels" . | nindent 4 }}
+  {{- if and .Values.ingress.enabled (eq .Values.ingress.className "gce") }}
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    cloud.google.com/backend-config: '{"default": "{{ $fn }}-dashboard"}'
+  {{- end }}
+spec:
+  selector: {{- include "vq.selector" (dict "root" . "component" "dashboard") | nindent 4 }}
+  ports: [{ name: http, port: 80, targetPort: 8080 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-dashboard
+  labels: {{- include "vq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+spec:
+  replicas: {{ .Values.dashboard.replicas }}
+  selector:
+    matchLabels: {{- include "vq.selector" (dict "root" . "component" "dashboard") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "vq.selector" (dict "root" . "component" "dashboard") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: dashboard
+          image: {{ include "vq.image" (dict "root" . "name" .Values.image.names.dashboard) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - { name: CONTROL_PLANE_UPSTREAM, value: "{{ $fn }}-control-plane:8000" }
+            - { name: GATEWAY_UPSTREAM, value: "{{ $fn }}-gateway:8080" }
+          ports: [{ name: http, containerPort: 8080 }]
+          readinessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 15 }
+          resources: {{- toYaml .Values.dashboard.resources | nindent 12 }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: conf, mountPath: /etc/nginx/conf.d }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: conf, emptyDir: {} }
+{{- if .Values.mocks.enabled }}
+{{- range $mock := list (dict "name" "mock-llm" "kind" "llm" "port" 9101) (dict "name" "mock-mcp" "kind" "mcp" "port" 9102) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-{{ $mock.name }}
+  labels: {{- include "vq.labels" $ | nindent 4 }}
+spec:
+  selector: {{- include "vq.selector" (dict "root" $ "component" $mock.name) | nindent 4 }}
+  ports: [{ name: http, port: {{ $mock.port }}, targetPort: {{ $mock.port }} }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-{{ $mock.name }}
+  labels: {{- include "vq.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $mock.name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "vq.selector" (dict "root" $ "component" $mock.name) | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "vq.selector" (dict "root" $ "component" $mock.name) | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $mock.name }}
+          image: {{ include "vq.image" (dict "root" $ "name" $.Values.image.names.mocks) }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          env:
+            - { name: MOCK, value: {{ $mock.kind }} }
+            - { name: PORT, value: {{ $mock.port | quote }} }
+            - { name: HOME, value: /tmp }
+            - { name: npm_config_cache, value: /tmp/.npm }
+          ports: [{ name: http, containerPort: {{ $mock.port }} }]
+          readinessProbe: { tcpSocket: { port: http }, periodSeconds: 5 }
+          resources: {{- toYaml $.Values.mocks.resources | nindent 12 }}
+          securityContext: {{- toYaml $.Values.containerSecurityContext | nindent 12 }}
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+{{- end }}
+{{- end }}

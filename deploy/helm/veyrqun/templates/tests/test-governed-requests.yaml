@@ -1,0 +1,65 @@
+{{- $fn := include "vq.fullname" . }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ $fn }}-test-governed-requests
+  labels: {{- include "vq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: helm-test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext: {{- toYaml .Values.podSecurityContext | nindent 4 }}
+  containers:
+    - name: test
+      image: {{ include "vq.image" (dict "root" . "name" .Values.image.names.controlPlane) }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      env: {{- include "vq.cpEnv" . | nindent 8 }}
+        - { name: CP, value: "http://{{ $fn }}-control-plane:8000" }
+        - { name: GW, value: "http://{{ $fn }}-gateway:8080" }
+        - { name: UI, value: "http://{{ $fn }}-dashboard:80" }
+        - { name: TEST_ID, value: "helm-test-{{ .Release.Revision }}" }
+      securityContext: {{- toYaml .Values.containerSecurityContext | nindent 8 }}
+      volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      command: ["python", "-c"]
+      args:
+        - |
+          import os, secrets, sys, time
+          from decimal import Decimal
+          import httpx
+          from veyrqun import service
+
+          cp, gw, ui = os.environ["CP"], os.environ["GW"], os.environ["UI"]
+          def check(name, ok, detail=""):
+              print(("PASS " if ok else "FAIL ") + name + (f"  ({detail})" if detail else ""), flush=True)
+              if not ok:
+                  sys.exit(1)
+
+          check("control plane healthy", httpx.get(f"{cp}/health").status_code == 200)
+          check("dashboard serves the app", httpx.get(f"{ui}/").status_code == 200)
+          check("gateway ready", httpx.get(f"{gw}/readyz").status_code == 200, httpx.get(f"{gw}/readyz").text)
+          check("unauthenticated agent refused", httpx.post(f"{gw}/mcp", json={}).status_code == 401)
+
+          agent_id = f"{os.environ['TEST_ID']}-{secrets.token_hex(3)}"
+          _, _, creds = service.create_agent({
+              "agent_id": agent_id, "display_name": "helm test", "allowed_actions": ["account_summary"],
+              "blocked_actions": ["wire_transfer"], "spend_cap_daily": Decimal("1"),
+          }, actor="system:helm-test")
+          token = httpx.post(f"{cp}/oauth/token", json={"grant_type": "client_credentials", "client_id": creds["client_id"], "client_secret": creds["client_secret"]}).json()["access_token"]
+          call = lambda tool, args=None: httpx.post(f"{gw}/mcp", headers={"authorization": f"Bearer {token}"}, timeout=15, json={
+              "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": tool, "arguments": args or {}}})
+          for _ in range(20):   # the gateway picks up the new agent with the next bundle
+              allowed = call("account_summary")
+              if allowed.status_code == 200:
+                  break
+              time.sleep(1)
+          check("allowed tool call goes through", allowed.status_code == 200, allowed.text[:200])
+          blocked = call("wire_transfer", {"amount": "1.00"})
+          rule = (blocked.json().get("error") or {}).get("data", {}).get("rule_id")
+          check("forbidden tool call blocked by policy", blocked.status_code == 403 and rule == "action_not_permitted",
+                f"{blocked.status_code} {blocked.text[:300]}")
+          service.revoke_agent(agent_id, "helm test finished", actor="system:helm-test")
+          print("all checks passed")
+  volumes: [{ name: tmp, emptyDir: {} }]
