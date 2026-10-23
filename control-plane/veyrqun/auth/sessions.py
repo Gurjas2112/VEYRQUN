@@ -90,6 +90,15 @@ def load(session_id: str) -> Session | None:
     return s
 
 
+def rotate(old_id: str, s: Session) -> str:
+    """New id and CSRF token for a session whose privileges changed (no session fixation); the old id dies."""
+    fresh = Session(**{**asdict(s), "csrf": secrets.token_urlsafe(32)})
+    new_id = create(fresh)
+    destroy(old_id)
+    s.csrf = fresh.csrf
+    return new_id
+
+
 def update(session_id: str, s: Session) -> None:
     client().set(_key(session_id), json.dumps(asdict(s)), ex=_ttl(s, int(time.time())))
 

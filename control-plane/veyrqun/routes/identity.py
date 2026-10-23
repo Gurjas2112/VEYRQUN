@@ -6,7 +6,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from .. import keys, service
+from .. import keys, service, token_guard
 from ..config import get_settings
 from ..models import TokenRequest
 
@@ -32,7 +32,17 @@ async def token(request: Request):
     except (ValidationError, ValueError):
         # RFC 6749 §5.2 error shape; never a 500 for a malformed client request.
         return JSONResponse({"error": "invalid_request"}, status_code=400, headers={"Cache-Control": "no-store"})
-    result = service.issue_token(body.client_id, body.client_secret)
+    ip = request.client.host if request.client else "unknown"
+    keys_ = token_guard.keys(body.client_id, ip)
+    if token_guard.locked(keys_):
+        return JSONResponse({"error": "slow_down", "error_description": "too many failed attempts"}, status_code=429,
+                            headers={"Retry-After": str(token_guard.WINDOW_S), "Cache-Control": "no-store"})
+    try:
+        result = service.issue_token(body.client_id, body.client_secret)
+    except service.GovernanceError:
+        token_guard.failed(keys_)
+        raise
+    token_guard.succeeded(keys_)
     return Response(content=json.dumps(result), media_type="application/json",
                     headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 

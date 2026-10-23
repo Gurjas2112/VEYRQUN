@@ -192,6 +192,14 @@ def demo_login(request: Request):
     return response
 
 
+@router.get("/me/data")
+def my_data(p: Principal = Depends(current_principal)):
+    """Self-service export of the personal data held about the signed-in person."""
+    if p.kind != "user":
+        raise HTTPException(400, "not a person")
+    return JSONResponse(directory.personal_data(UUID(p.id)), headers={"Cache-Control": "no-store"})
+
+
 @router.post("/switch")
 def switch(body: Switch, p: Principal = Depends(current_principal)):
     if p.kind != "user" or p.session is None or p.session_id is None:
@@ -200,8 +208,11 @@ def switch(body: Switch, p: Principal = Depends(current_principal)):
     if m is None:
         raise HTTPException(403, "not a member of that workspace")
     p.session.workspace_id, p.session.roles = m["workspace_id"], m["roles"]
-    sessions.update(p.session_id, p.session)
-    return {"workspace_id": m["workspace_id"], "roles": m["roles"], "permissions": sorted(permissions_for(set(m["roles"])))}
+    new_id = sessions.rotate(p.session_id, p.session)  # roles changed: new session id and CSRF token
+    response = JSONResponse({"workspace_id": m["workspace_id"], "roles": m["roles"],
+                             "permissions": sorted(permissions_for(set(m["roles"])))})
+    _set_session_cookies(response, new_id, p.session)
+    return response
 
 
 @router.get("/invite/{token}")
@@ -249,6 +260,9 @@ def create_sandbox(request: Request, body: SandboxRequest, p: Principal = Depend
         raise HTTPException(exc.status_code, exc.detail) from exc
     m = next(m for m in directory.memberships(UUID(p.id)) if m["workspace_id"] == str(ws))
     p.session.workspace_id, p.session.roles = m["workspace_id"], m["roles"]
-    sessions.update(p.session_id, p.session)
+    new_id = sessions.rotate(p.session_id, p.session)
     _audit_auth(str(ws), p.actor, "sandbox_created")
-    return {"workspace_id": str(ws), "slug": m["slug"], "roles": m["roles"], "expires_in_days": get_settings().sandbox_ttl_days}
+    response = JSONResponse({"workspace_id": str(ws), "slug": m["slug"], "roles": m["roles"],
+                             "expires_in_days": get_settings().sandbox_ttl_days}, status_code=201)
+    _set_session_cookies(response, new_id, p.session)
+    return response

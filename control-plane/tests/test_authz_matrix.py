@@ -31,6 +31,7 @@ ENDPOINTS: dict[tuple[str, str], str] = {
     ("POST", "/auth/logout"): SESSION,
     ("POST", "/auth/backchannel-logout"): PUBLIC,
     ("GET", "/auth/me"): SESSION,
+    ("GET", "/auth/me/data"): SESSION,
     ("POST", "/auth/switch"): SESSION,
     ("GET", "/auth/invite/{token}"): PUBLIC,
     ("GET", "/auth/demo"): PUBLIC,

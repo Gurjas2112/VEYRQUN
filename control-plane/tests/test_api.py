@@ -188,3 +188,21 @@ def test_websocket_streams_decisions(client):
         msg = ws.receive_json()
         assert msg["agent_id"] == "travel_agent_01" and msg["outcome"] == "allow"
         assert msg["_agent_snapshot"]["spend_used_today"] == "10.00"
+
+
+def test_token_endpoint_locks_out_after_repeated_bad_secrets(anon_client):
+    from veyrqun import token_guard
+
+    creds = service.create_agent({"agent_id": "lockout_agent", "display_name": "x", "allowed_actions": ["a"],
+                                  "blocked_actions": [], "spend_cap_daily": Decimal("1")})[2]
+    bad = {"grant_type": "client_credentials", "client_id": creds["client_id"], "client_secret": "wrong"}
+    for _ in range(token_guard.MAX_PER_CLIENT):
+        assert anon_client.post("/oauth/token", json=bad).status_code == 401
+    locked = anon_client.post("/oauth/token", json={**bad, "client_secret": creds["client_secret"]})
+    assert locked.status_code == 429 and locked.headers["retry-after"] == str(token_guard.WINDOW_S)
+    # Another client from the same IP is unaffected (per-IP limit is higher).
+    other = service.create_agent({"agent_id": "lockout_other", "display_name": "x", "allowed_actions": ["a"],
+                                  "blocked_actions": [], "spend_cap_daily": Decimal("1")})[2]
+    ok = anon_client.post("/oauth/token", json={"grant_type": "client_credentials", "client_id": other["client_id"],
+                                                 "client_secret": other["client_secret"]})
+    assert ok.status_code == 200

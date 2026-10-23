@@ -55,6 +55,8 @@ def parse_event(fields: dict) -> dict:
         amount_minor = e["amount_minor"]
         if not isinstance(amount_minor, int) or isinstance(amount_minor, bool) or amount_minor < 0:
             raise BadEvent("amount_minor must be a non-negative integer")
+        if e["outcome"] not in ("allow", "block", "redact", "require_approval"):
+            raise BadEvent(f"unknown outcome {e['outcome']!r}")
         if e["mode"] not in ("observe", "enforce"):
             raise BadEvent(f"unknown mode {e['mode']!r}")
         decision_id = str(e["decision_id"])

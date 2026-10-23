@@ -223,8 +223,17 @@ def test_self_signup_only_creates_an_isolated_expiring_sandbox(anon_client, idp)
     me = anon_client.get("/auth/me").json()
     assert me["workspace_id"] is None and me["roles"] == []
     assert anon_client.get("/agents").status_code == 403  # no access to anything real
-    box = anon_client.post("/auth/sandbox", json={}).json()
+    old_session = anon_client.cookies.get(cookie_names()[0], domain="testserver.local")
+    resp = anon_client.post("/auth/sandbox", json={})
+    box = resp.json()
     assert box["slug"].startswith("sbx-") and set(box["roles"]) == {"security_operator", "app_owner"}
+    # Privileges changed, so the session was rotated: new id and CSRF token, and the old id no longer works.
+    new_session = resp.cookies.get(cookie_names()[0])
+    assert new_session and new_session != old_session
+    assert sessions.load(old_session) is None
+    anon_client.cookies.set(cookie_names()[0], new_session, domain="testserver.local")
+    anon_client.cookies.set(cookie_names()[1], resp.cookies.get(cookie_names()[1]), domain="testserver.local")
+    anon_client.headers["X-CSRF-Token"] = resp.cookies.get(cookie_names()[1])
     assert anon_client.post("/auth/sandbox", json={}).status_code == 409  # one active sandbox per person
     assert anon_client.get("/agents").json() == []  # nothing from the default workspace leaks in
 

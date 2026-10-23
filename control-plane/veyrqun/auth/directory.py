@@ -101,6 +101,27 @@ def identity_of(user_id: UUID) -> dict:
             "name": ring.decrypt(bytes(row.display_enc), aad).decode() or None, "status": row.status}
 
 
+def personal_data(user_id: UUID) -> dict:
+    """Everything VEYRQUN holds about one person (data-subject access): identity, memberships, sessions and a count of
+    ledger entries they authored. Ledger rows reference them only as user:<uuid>; erasure shreds the identity key."""
+    with tx(PLATFORM) as conn:
+        row = conn.execute(text("SELECT created_at, last_login_at, status FROM iam.users WHERE id = :u"),
+                           {"u": user_id}).first()
+        authored = conn.execute(text("SELECT count(*) FROM audit.events WHERE actor = :a"),
+                                {"a": f"user:{user_id}"}).scalar_one()
+    ident = identity_of(user_id)
+    return {
+        "generated_at": utcnow().isoformat(),
+        "identity": {**ident, "created_at": row.created_at.isoformat() if row else None,
+                     "last_login_at": row.last_login_at.isoformat() if row and row.last_login_at else None},
+        "memberships": memberships(user_id),
+        "sessions": sessions.list_for_user(str(user_id)),
+        "audit_entries_authored": authored,
+        "storage": {"email_and_name": "AES-256-GCM under a per-person key (crypto-shredded on erasure)",
+                    "email_lookup": "keyed HMAC, not reversible", "ledger": "pseudonymous actor id only"},
+    }
+
+
 def memberships(user_id: UUID) -> list[dict]:
     with tx(PLATFORM) as conn:
         rows = conn.execute(

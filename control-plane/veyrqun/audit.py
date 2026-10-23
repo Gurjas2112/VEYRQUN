@@ -52,6 +52,17 @@ def compute_hmac(entry_hash: str, secret: bytes) -> str:
     return hmac_mod.new(secret, entry_hash.encode(), hashlib.sha256).hexdigest()
 
 
+def _storable(value):
+    """Strings (also nested in dicts/lists, keys included) with NUL replaced by U+FFFD."""
+    if isinstance(value, str):
+        return value.replace(chr(0), chr(0xFFFD))
+    if isinstance(value, dict):
+        return {_storable(k): _storable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_storable(v) for v in value]
+    return value
+
+
 def append(
     conn: Connection,
     *,
@@ -74,6 +85,12 @@ def append(
     # Canonicalise to the currency's precision *before* hashing, so the hash matches what
     # NUMERIC(18,2) gives back on read (Decimal("0") would hash as "0" but read back as "0.00").
     amount = to_decimal(amount, currency)
+    # Postgres text can't hold NUL; an unwritable entry would let a crafted input keep a decision out of the
+    # ledger (the writer would dead-letter it). Replace it before hashing, so the hash covers exactly what's stored.
+    actor, agent_id, action_type = _storable(actor), _storable(agent_id), _storable(action_type)
+    rule_id = _storable(rule_id) if rule_id is not None else None
+    decision_id = _storable(decision_id) if decision_id is not None else None
+    details = _storable(details) if details is not None else None
     conn.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": CHAIN_LOCK_KEY})
     if decision_id is not None:
         existing = conn.execute(text("SELECT seq FROM audit.decision_ids WHERE decision_id = :d"), {"d": decision_id}).scalar()

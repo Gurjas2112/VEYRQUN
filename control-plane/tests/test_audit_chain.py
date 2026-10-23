@@ -117,3 +117,12 @@ def test_interleaved_tenants_keep_one_linear_chain():
                          currency="USD", outcome="allow", rule_id=None, policy_version=1)
     result = audit.verify_chain()
     assert result["valid"], result
+
+
+@pytest.mark.parametrize("column, value", [("amount", "-1"), ("currency", "'usd'"), ("outcome", "'maybe'"),
+                                           ("mode", "'shadow'"), ("hash_version", "3"), ("entry_hash", "'zz'")])
+def test_database_rejects_impossible_ledger_rows(owner_engine, column, value):
+    """Even the owner, with the append-only trigger disabled, can't store a row the verifier couldn't trust."""
+    _activity(1)
+    with pytest.raises(DBAPIError, match="check constraint"):
+        _as_dba(owner_engine, f"UPDATE audit.events SET {column} = {value}")  # noqa: S608 (test literals)

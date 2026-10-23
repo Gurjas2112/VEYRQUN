@@ -199,3 +199,14 @@ def test_oversized_bodies_are_rejected(client):
     r = client.post("/simulate/action", content=b"{" + b" " * 1_100_000 + b"}",
                     headers={"Content-Type": "application/json"})
     assert r.status_code == 413
+
+
+def test_people_can_export_their_own_data_and_only_theirs(ws):
+    alice, bob = make_user(("viewer",), email="alice@bank.test"), make_user(("viewer",), email="bob@bank.test")
+    with new_client() as c:
+        login_as(c, alice)
+        data = c.get("/auth/me/data")
+        assert data.status_code == 200 and data.headers["cache-control"] == "no-store"
+        body = data.json()
+        assert body["identity"]["email"] == "alice@bank.test" and "bob@bank.test" not in data.text
+        assert body["memberships"][0]["roles"] == ["viewer"] and len(body["sessions"]) == 1
