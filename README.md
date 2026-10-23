@@ -7,8 +7,7 @@
 Every model call and tool call an agent makes passes through one gateway. A deterministic policy decides (allow,
 mask, block or hold for a human), and every decision lands in a signed, tamper-evident ledger.
 
-**[Live demo](https://136.82.10.126.nip.io)** · no account needed · open until **28 Oct 2026, 10:40 UTC** ·
-[what to try](docs/Demo%20Script.md)
+**[Live demo](https://136.82.10.126.nip.io)**
 
 [![CI](https://github.com/Gurjas2112/VEYRQUN/actions/workflows/ci.yml/badge.svg)](https://github.com/Gurjas2112/VEYRQUN/actions/workflows/ci.yml)
 ![TypeScript](https://img.shields.io/badge/gateway-Node%2022%20·%20TypeScript-3178C6?style=flat-square)
