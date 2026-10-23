@@ -9,6 +9,7 @@ would get. Not available in production workspaces.
 from __future__ import annotations
 
 import json
+import time
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -68,7 +69,7 @@ def run(body: PlaygroundRun, p: Principal = Depends(require("actions:simulate"))
         url, payload = f"{gw}/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                                      "params": {"name": body.action, "arguments": _tool_args(body.action, body.amount, body.text)}}
     else:
-        url, payload = f"{gw}/v1/chat/completions", {"model": get_settings().playground_model, "max_tokens": 400,
+        url, payload = f"{gw}/v1/chat/completions", {"model": get_settings().playground_model, "max_tokens": 1024,
                                                       "messages": [{"role": "user", "content": body.text or "Hello"}]}
     try:
         r = httpx.post(url, json=payload, headers=headers, timeout=60)
@@ -90,8 +91,15 @@ def run(body: PlaygroundRun, p: Principal = Depends(require("actions:simulate"))
         outcome = "block"
     rule_id = detail.get("rule_id") or (err.get("rule_id") if isinstance(err, dict) else None)
     decision_id = r.headers.get("x-veyrqun-decision-id")
-    audit_writer.drain_opportunistically()
-    entry = audit.by_decision(decision_id, p.workspace_id) if decision_id else None
+    entry = None
+    # The decision event reaches the ledger through the audit writer (milliseconds normally). Wait a moment for it
+    # so the visitor sees the signed entry; if the writer is behind, the UI says so instead of blocking.
+    for _ in range(15 if decision_id else 0):
+        audit_writer.drain_opportunistically()
+        entry = audit.by_decision(decision_id, p.workspace_id)
+        if entry is not None:
+            break
+        time.sleep(0.2)
     return {
         "http_status": r.status_code,
         "outcome": outcome or ("allow" if r.status_code == 200 else "refused"),

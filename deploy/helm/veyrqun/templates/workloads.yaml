@@ -67,6 +67,8 @@ spec:
           readinessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 5 }
           livenessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 15, failureThreshold: 4 }
           startupProbe: { httpGet: { path: /health, port: http }, periodSeconds: 3, failureThreshold: 40 }
+          lifecycle:
+            preStop: { sleep: { seconds: 5 } }   # leave the Service endpoints before shutting down (no 502s on rollout)
           resources: {{- toYaml .Values.controlPlane.resources | nindent 12 }}
           securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           volumeMounts: [{ name: tmp, mountPath: /tmp }]
