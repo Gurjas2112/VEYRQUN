@@ -202,7 +202,8 @@ def test_oversized_bodies_are_rejected(client):
 
 
 def test_people_can_export_their_own_data_and_only_theirs(ws):
-    alice, bob = make_user(("viewer",), email="alice@bank.test"), make_user(("viewer",), email="bob@bank.test")
+    alice = make_user(("viewer",), email="alice@bank.test")
+    make_user(("viewer",), email="bob@bank.test")  # someone else whose data must not appear
     with new_client() as c:
         login_as(c, alice)
         data = c.get("/auth/me/data")
