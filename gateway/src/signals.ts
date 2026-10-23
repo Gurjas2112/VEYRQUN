@@ -7,6 +7,8 @@
  * Phase 9's guard classifier can replace it behind the same field; on timeout it must return null, which never blocks.
  */
 
+import { canonicalize, decodedBase64Segments } from "./normalize.js";
+
 const PATTERNS: Array<{ re: RegExp; score: number; id: string }> = [
   { id: "override_previous", score: 0.95,
     re: /\b(ignore|disregard|forget|override)\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier|system)\s+(instructions?|rules|prompts?|polic(y|ies))/i },
@@ -24,11 +26,16 @@ export interface InjectionSignal {
 }
 
 export function injectionSignal(text: string): InjectionSignal {
+  // Canonical text defeats zero-width, fullwidth and look-alike tricks; base64 payloads are decoded and checked too.
+  const canon = canonicalize(text).text;
+  const views = [canon, ...decodedBase64Segments(canon).map((d) => canonicalize(d).text)];
   let score = 0;
   const matched: string[] = [];
   for (const p of PATTERNS) {
-    if (p.re.test(text)) {
-      matched.push(p.id);
+    for (const [i, view] of views.entries()) {
+      if (!p.re.test(view)) continue;
+      const id = i === 0 ? p.id : `${p.id}:base64`;
+      if (!matched.includes(id)) matched.push(id);
       score = Math.max(score, p.score);
     }
   }

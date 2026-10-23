@@ -120,6 +120,24 @@ describe("happy paths", () => {
     expect(text).toContain(note);
   });
 
+  it("redacts masked data classes inside tool arguments before the tool sees them (regression)", async () => {
+    const r = await post("/mcp", tool("flight_rebook", { fare: "10.00", note: "email jane.doe@example.com", nested: { cc: ["bob@x.io"] } }),
+      await h.cp.token("travel_agent_01"));
+    expect(r.status).toBe(200);
+    const seen = mcpCalls.at(-1)!.arguments as { note: string; nested: { cc: string[] } };
+    expect(seen.note).toBe("email [REDACTED:email]");
+    expect(seen.nested.cc[0]).toBe("[REDACTED:email]");
+    expect(JSON.stringify(seen)).not.toContain("@");
+  });
+
+  it("classifies decoded argument values: a card split by a line break inside JSON is still found", async () => {
+    const nl = String.fromCharCode(10);
+    const r = await post("/mcp", tool("flight_rebook", { fare: "10.00", note: `4111 1111${nl}1111 1111` }),
+      await h.cp.token("travel_agent_01"));
+    expect(r.status).toBe(403);
+    expect((r.json.error as { data: { rule_id: string } }).data.rule_id).toBe("data_class_not_permitted");
+  });
+
   it("filters tools/list to what the agent may call", async () => {
     const r = await post("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/list" }, await h.cp.token("travel_agent_01"));
     const names = (r.json.result as { tools: Array<{ name: string }> }).tools.map((t) => t.name).sort();
@@ -369,6 +387,25 @@ describe("failure-mode contract", () => {
       expect(event).toMatchObject({ effective_outcome: "block", rule_id: "llm_budget_exhausted" });
     } finally {
       await capped.close();
+    }
+  });
+
+  it("resource guardrails: tool-call fan-out over the cap is refused; oversized prompts get 413", async () => {
+    const token = await h.cp.token("travel_agent_01");
+    const tools = [{ type: "function", function: { name: "account_summary", parameters: { type: "object" } } }];
+    const many = Array.from({ length: 9 }, () => "CALL account_summary {}").join(" ");
+    const fan = await post("/v1/chat/completions", chat(many, { tools }), token);
+    expect(fan.status).toBe(403);
+    expect(fan.json.error).toMatchObject({ type: "response_policy_violation", data_class: "tool_call_fanout" });
+    const few = await post("/v1/chat/completions", chat("CALL account_summary {} CALL account_summary {}", { tools }), token);
+    expect(few.status).toBe(200);
+    const small = await startHarness({ MAX_PROMPT_CHARS: "50" });
+    try {
+      const big = await post2(small, "/v1/chat/completions", chat("x".repeat(51)), await small.cp.token("travel_agent_01"));
+      expect(big.status).toBe(413);
+      expect(big.json.error).toMatchObject({ type: "prompt_too_large" });
+    } finally {
+      await small.close();
     }
   });
 

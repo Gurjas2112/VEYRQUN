@@ -1,3 +1,4 @@
+import { textOfJsonString } from "./json-text.js";
 /**
  * LLM spend: estimate before the call (so caps apply up front), correct from `usage` afterwards.
  * Rounded *up* to whole minor units: governance overestimates rather than letting fractions slip through.
@@ -22,7 +23,7 @@ export interface ChatMessage {
 
 /** Arguments of an assistant message's tool calls: model output, classified like any other content. */
 export const toolCallText = (calls: ToolCall[] | undefined): string =>
-  (Array.isArray(calls) ? calls : []).map((c) => c?.function?.arguments ?? "").filter(Boolean).join("\n");
+  (Array.isArray(calls) ? calls : []).map((c) => textOfJsonString(c?.function?.arguments ?? "")).filter(Boolean).join("\n");
 
 export function messageText(messages: ChatMessage[]): string {
   return messages

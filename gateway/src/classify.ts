@@ -4,7 +4,9 @@
  * ISO 7064 mod-97 for IBAN), which keeps false positives down on arbitrary digit runs.
  */
 
-export type DataClass = "email" | "phone" | "aadhaar" | "pan_in" | "iban" | "pci_pan";
+import { canonicalize, toOriginal } from "./normalize.js";
+
+export type DataClass = "email" | "phone" | "aadhaar" | "pan_in" | "iban" | "pci_pan" | "secret";
 
 export interface Span {
   start: number;
@@ -72,10 +74,23 @@ interface Detector {
   valid?: (match: string) => boolean;
 }
 
+const digitsOnly = (m: string) => m.replace(/\D/g, "");
+
 const DETECTORS: Detector[] = [
+  // Credentials first, so a key containing digits is a secret rather than a phone number.
+  { cls: "secret", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g },
+  { cls: "secret", re: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },                                // AWS access key id
+  { cls: "secret", re: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b|\bgithub_pat_[A-Za-z0-9_]{40,}\b/g },
+  { cls: "secret", re: /\bxox[abposr]-[A-Za-z0-9-]{10,}\b/g },                              // Slack
+  { cls: "secret", re: /\b(?:sk|rk)_live_[A-Za-z0-9]{16,}\b/g },                           // Stripe
+  { cls: "secret", re: /\bAIza[0-9A-Za-z_-]{35}\b/g },                                     // Google API key
+  { cls: "secret", re: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{16,}\b/g }, // JWT
+  { cls: "secret", re: /\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*\S{6,}/gi },
   { cls: "email", re: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24}/g },
   // Card numbers: 13-19 digits, optionally grouped by spaces/dashes, Luhn-checked.
-  { cls: "pci_pan", re: /\b(?:\d[ -]?){12,18}\d\b/g, valid: (m) => luhnValid(m.replace(/[ -]/g, "")) },
+  { cls: "pci_pan", re: /\b(?:\d[ \n-]?){12,18}\d\b/g, valid: (m) => luhnValid(m.replace(/[ \n-]/g, "")) },
+  // Grouped with other separators, used consistently (4111.1111.1111.1111, one group per line, ...).
+  { cls: "pci_pan", re: /\b\d{4}([.\n/_])\d{4}\1\d{4}\1\d{1,7}\b/g, valid: (m) => luhnValid(digitsOnly(m)) },
   // Aadhaar: 12 digits (often 4-4-4), never starting with 0/1, Verhoeff-checked.
   { cls: "aadhaar", re: /\b[2-9]\d{3}[ -]?\d{4}[ -]?\d{4}\b/g, valid: (m) => verhoeffValid(m.replace(/[ -]/g, "")) },
   // Indian PAN (tax id): 5 letters, 4 digits, 1 letter; 4th letter encodes the holder type.
@@ -86,20 +101,25 @@ const DETECTORS: Detector[] = [
 ];
 
 export function classify(text: string): Classification {
-  const spans: Span[] = [];
+  // Detect on canonical text (fullwidth, invisible and look-alike characters normalised), report original offsets.
+  const canon = canonicalize(text);
+  const found: Span[] = [];
   for (const d of DETECTORS) {
     d.re.lastIndex = 0;
-    for (const m of text.matchAll(d.re)) {
+    for (const m of canon.text.matchAll(d.re)) {
       const value = m[0];
       if (d.valid && !d.valid(value)) continue;
       const start = m.index ?? 0;
       const end = start + value.length;
       // Earlier detectors win on overlap (a card number is not also a phone number).
-      if (spans.some((s) => start < s.end && end > s.start)) continue;
-      spans.push({ start, end, cls: d.cls });
+      if (found.some((s) => start < s.end && end > s.start)) continue;
+      found.push({ start, end, cls: d.cls });
     }
   }
-  spans.sort((a, b) => a.start - b.start);
+  const spans = found.map((s) => {
+    const [start, end] = toOriginal(canon, s.start, s.end, text);
+    return { start, end, cls: s.cls };
+  }).sort((a, b) => a.start - b.start);
   return { classes: [...new Set(spans.map((s) => s.cls))].sort(), spans };
 }
 

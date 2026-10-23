@@ -9,6 +9,7 @@ import { StreamScanner } from "../stream-scan.js";
 import { explainFor, remember } from "../explain.js";
 import { callUpstream, UpstreamTimeout } from "../upstream.js";
 import { BudgetExhausted, upstreamModel } from "../llm-upstream.js";
+import { mapStrings, textOf } from "../json-text.js";
 import type { Deps } from "../app.js";
 import { authenticate, sendGoverned } from "./common.js";
 
@@ -38,13 +39,22 @@ export function billedOutputTokens(u: Usage): number {
 
 const redactText = (text: string, classes: Set<string>): string => redact(text, classify(text).spans, classes);
 
+/** Redact inside JSON-encoded tool arguments value by value, so the result is still valid JSON. */
+function redactJsonString(raw: string, classes: Set<string>): string {
+  try {
+    return JSON.stringify(mapStrings(JSON.parse(raw), (s) => redactText(s, classes)));
+  } catch {
+    return redactText(raw, classes);
+  }
+}
+
 function redactMessages(messages: ChatMessage[], classes: Set<string>): ChatMessage[] {
   if (!classes.size) return messages;
   return messages.map((m) => {
     const out: ChatMessage = typeof m.content === "string" ? { ...m, content: redactText(m.content, classes) } : { ...m };
     if (Array.isArray(m.tool_calls)) {
       out.tool_calls = m.tool_calls.map((c) => c?.function?.arguments
-        ? { ...c, function: { ...c.function, arguments: redactText(c.function.arguments, classes) } } : c);
+        ? { ...c, function: { ...c.function, arguments: redactJsonString(c.function.arguments, classes) } } : c);
     }
     return out;
   });
@@ -62,11 +72,29 @@ function scanWhole(deps: Deps, ctx: Context, text: string): { text: string } | {
 
 /** Tool-call arguments are released only once complete and scanned (a partial JSON string can't be judged). */
 function scanToolCalls(deps: Deps, ctx: Context, calls: ToolCall[]): string | null {
+  // A model that suddenly emits dozens of tool calls in one turn is runaway or hijacked; refuse the whole turn.
+  if (calls.length > deps.cfg.MAX_TOOL_CALLS_PER_TURN) return "tool_call_fanout";
   for (const c of calls) {
     if (!c.function?.arguments) continue;
-    const v = scanWhole(deps, ctx, c.function.arguments);
-    if ("blocked" in v) return v.blocked;
-    c.function.arguments = v.text;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(c.function.arguments);
+    } catch {
+      parsed = undefined;
+    }
+    if (parsed === undefined) {
+      const v = scanWhole(deps, ctx, c.function.arguments);
+      if ("blocked" in v) return v.blocked;
+      c.function.arguments = v.text;
+      continue;
+    }
+    // Scan decoded values (JSON escapes like a line break inside a string can split data from the detectors).
+    const whole = scanWhole(deps, ctx, textOf(parsed));
+    if ("blocked" in whole) return whole.blocked;
+    c.function.arguments = JSON.stringify(mapStrings(parsed, (s) => {
+      const v = scanWhole(deps, ctx, s);
+      return "text" in v ? v.text : s;
+    }));
   }
   return null;
 }
@@ -82,7 +110,12 @@ export function registerChat(app: FastifyInstance, deps: Deps): void {
     const price = priceFor(deps.cfg.MODEL_PRICES, body.model);
     if (!price) return reply.code(400).send({ error: { type: "unknown_model", message: `no price configured for ${body.model}` } });
 
+    // Resource guardrails: bounded output per call and bounded prompts, before any policy or upstream cost.
+    if (body.max_tokens !== undefined && body.max_tokens > deps.cfg.MAX_TOKENS_CEILING) body.max_tokens = deps.cfg.MAX_TOKENS_CEILING;
     const text = messageText(body.messages as ChatMessage[]);
+    if (text.length > deps.cfg.MAX_PROMPT_CHARS) {
+      return reply.code(413).send({ error: { type: "prompt_too_large", message: `prompt exceeds ${deps.cfg.MAX_PROMPT_CHARS} characters` } });
+    }
     const estimate = costMinor(price, estimateTokens(text), body.max_tokens ?? deps.cfg.DEFAULT_MAX_TOKENS);
     const result = await deps.pipeline.govern({
       identity, action: "llm.chat", actionKind: "llm", amountMinor: estimate, text,

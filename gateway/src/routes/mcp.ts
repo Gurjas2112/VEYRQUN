@@ -8,6 +8,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Deps } from "../app.js";
 import { remember } from "../explain.js";
+import { classify, redact } from "../classify.js";
+import { mapStrings, textOf } from "../json-text.js";
 import { sha256 } from "../events.js";
 import { decimalToMinor } from "../pipeline.js";
 import { StreamScanner } from "../stream-scan.js";
@@ -98,7 +100,7 @@ export function registerMcp(app: FastifyInstance, deps: Deps): void {
       amountMinor = parsedAmount;
     }
     const argsText = JSON.stringify(args);
-    const result = await deps.pipeline.govern({ identity, action: name, actionKind: "tool", amountMinor, text: argsText,
+    const result = await deps.pipeline.govern({ identity, action: name, actionKind: "tool", amountMinor, text: textOf(args),
       approvalId: req.headers["x-veyrqun-approval"] as string | undefined });
     remember(req, result.ctx);
     if (result.kind === "respond") return sendGoverned(reply, result, deps, rpc.id ?? null);
@@ -106,7 +108,11 @@ export function registerMcp(app: FastifyInstance, deps: Deps): void {
     const tUp = process.hrtime.bigint();
     let up;
     try {
-      up = await callUpstream([mcpBase], "/mcp", { ...upstreamOpts, body: JSON.stringify(rpc), headers: forwardHeaders(sessionId),
+      // Request-side redaction applies to the tool's arguments too: the bank core never sees masked data classes.
+      const outgoing = ctx.requestRedactions.size
+        ? { ...rpc, params: { ...call.data, arguments: mapStrings(args, (v) => redact(v, classify(v).spans, ctx.requestRedactions)) } }
+        : rpc;
+      up = await callUpstream([mcpBase], "/mcp", { ...upstreamOpts, body: JSON.stringify(outgoing), headers: forwardHeaders(sessionId),
         idempotent: false });
     } catch (err) {
       // The tool may or may not have run, so the reservation is kept and the reconciliation job settles it.

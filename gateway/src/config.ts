@@ -82,6 +82,9 @@ export const ConfigSchema = z.object({
       }
     }),
   DEFAULT_MAX_TOKENS: z.coerce.number().int().positive().default(512),
+  MAX_TOKENS_CEILING: z.coerce.number().int().positive().default(4096),
+  MAX_PROMPT_CHARS: z.coerce.number().int().positive().default(200_000),
+  MAX_TOOL_CALLS_PER_TURN: z.coerce.number().int().positive().default(8),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
