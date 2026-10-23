@@ -8,6 +8,7 @@ Ed25519 JWT) and translates the gateway's HTTP answers into outcomes the graph c
 from __future__ import annotations
 
 import itertools
+import random
 import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -44,12 +45,15 @@ class Outcome:
 
 class GatewayClient:
     def __init__(self, gateway_url: str, control_plane_url: str, client_id: str, client_secret: str,
-                 model: str = "mock-model", timeout: float = 30.0):
+                 model: str = "mock-model", timeout: float = 30.0, max_retries: int = 2, backoff_s: float = 0.5,
+                 transport: httpx.BaseTransport | None = None, sleep=time.sleep):
         self.gw = gateway_url.rstrip("/")
         self.cp = control_plane_url.rstrip("/")
         self._creds = {"grant_type": "client_credentials", "client_id": client_id, "client_secret": client_secret}
         self.model = model
-        self.http = httpx.Client(timeout=timeout)
+        self.http = httpx.Client(timeout=timeout, transport=transport)
+        self.max_retries, self.backoff_s, self._sleep = max_retries, backoff_s, sleep
+        self.retries = 0  # how many retries this client made (reported in traces)
         self._token: str | None = None
         self._token_exp = 0.0
         self._ids = itertools.count(1)
@@ -81,11 +85,33 @@ class GatewayClient:
         if tools:
             body["tools"] = tools
         headers = self._bearer() | ({"x-veyrqun-approval": approval_id} if approval_id else {})
-        return self._outcome(self.http.post(f"{self.gw}/v1/chat/completions", json=body, headers=headers))
+        return self._outcome(self._post_idempotent(f"{self.gw}/v1/chat/completions", body, headers))
+
+    RETRYABLE = frozenset({429, 502, 503, 504})
+
+    def _post_idempotent(self, url: str, body: dict, headers: dict) -> httpx.Response:
+        """Model calls have no side effects, so transient failures are retried with jittered exponential backoff,
+        honouring Retry-After. Policy refusals (403) are final: an agent must never retry its way around a no."""
+        attempt = 0
+        while True:
+            try:
+                r = self.http.post(url, json=body, headers=headers)
+                if r.status_code not in self.RETRYABLE or attempt >= self.max_retries:
+                    return r
+                retry_after = r.headers.get("retry-after", "")
+                delay = float(retry_after) if retry_after.isdigit() else self.backoff_s * 2 ** attempt
+            except httpx.TransportError:
+                if attempt >= self.max_retries:
+                    raise
+                delay = self.backoff_s * 2 ** attempt
+            attempt += 1
+            self.retries += 1
+            self._sleep(min(30.0, delay) * random.uniform(0.8, 1.2))
 
     # ------------------------------------------------------------ tools (MCP over the gateway)
 
     def _rpc(self, method: str, params: dict | None = None, approval_id: str | None = None) -> Outcome:
+        # Never retried: a tool call may have side effects in the bank core (the gateway doesn't retry them either).
         payload = {"jsonrpc": "2.0", "id": next(self._ids), "method": method, "params": params or {}}
         headers = self._bearer() | ({"x-veyrqun-approval": approval_id} if approval_id else {})
         return self._outcome(self.http.post(f"{self.gw}/mcp", json=payload, headers=headers))

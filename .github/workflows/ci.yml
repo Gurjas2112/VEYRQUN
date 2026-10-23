@@ -121,6 +121,8 @@ jobs:
       - run: npm --prefix gateway ci --no-audit --no-fund
       - name: Playwright e2e (login, invites, MFA, sandbox, logout) + control-plane/gateway interop
         run: python -m pytest e2e -q
+      - name: Guardrail eval regression gate (no must-block case may pass, benign FPR may not rise)
+        run: python -m evals.run --gate --no-write
       - name: OWASP ZAP API scan (OpenAPI-driven) against the running control plane
         run: |
           cd control-plane
@@ -187,3 +189,32 @@ jobs:
         run: docker build -f control-plane/Dockerfile -t veyrqun/control-plane:ci .
       - name: Build gateway image
         run: docker build -f gateway/Dockerfile -t veyrqun/gateway:ci .
+
+  helm:
+    name: helm (lint, kind install, helm test)
+    runs-on: ubuntu-latest
+    needs: [control-plane, gateway]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with: { version: v3.22.0 }
+      - name: Lint (defaults and GKE values)
+        run: |
+          helm lint deploy/helm/veyrqun
+          helm lint deploy/helm/veyrqun -f deploy/helm/veyrqun/values-gke.yaml             --set demo.expiresAt=2030-01-01T00:00:00Z --set ingress.host=ci.example.com --set demo.scaleDownSchedule="0 0 1 1 *"
+      - uses: helm/kind-action@v1
+        with: { cluster_name: veyrqun, version: v0.33.0 }
+      - name: Build and load images
+        run: |
+          docker build -q -f control-plane/Dockerfile -t veyrqun/control-plane:ci .
+          docker build -q -f gateway/Dockerfile -t veyrqun/gateway:ci .
+          docker build -q -f gateway/Dockerfile.mocks -t veyrqun/mocks:ci .
+          docker build -q -t veyrqun/dashboard:ci frontend
+          for i in control-plane gateway mocks dashboard; do kind load docker-image veyrqun/$i:ci --name veyrqun; done
+      - name: Install and test
+        run: |
+          helm install veyrqun deploy/helm/veyrqun -n veyrqun --create-namespace --set image.tag=ci             --set controlPlane.replicas=1 --set gateway.autoscaling.enabled=false --set gateway.replicas=1             --set auditWriter.replicas=1 --set dashboard.replicas=1 --wait --timeout 10m
+          helm test veyrqun -n veyrqun --logs --timeout 5m
+      - name: Diagnostics on failure
+        if: failure()
+        run: kubectl -n veyrqun get pods -o wide; kubectl -n veyrqun describe pods | tail -80; kubectl -n veyrqun logs -l app.kubernetes.io/instance=veyrqun --all-containers --tail=40

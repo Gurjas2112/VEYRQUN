@@ -16,7 +16,7 @@ FLEET: dict[str, dict] = {
         "max_per_transaction": Decimal("100.00"),
         "approval_threshold": Decimal("50.00"),
         "redact_data_classes": ["email", "phone"],
-        "block_data_classes": ["pci_pan"],
+        "block_data_classes": ["pci_pan", "secret"],
         "system": "You reverse fees charged in error. Check the account first, then waive only the disputed fee.",
     },
     "card_replacement_bot": {
@@ -27,7 +27,7 @@ FLEET: dict[str, dict] = {
         "blocked_actions": ["waive_fee"],
         "spend_cap_daily": Decimal("200.00"),
         "max_per_transaction": Decimal("40.00"),
-        "block_data_classes": ["pci_pan"],
+        "block_data_classes": ["pci_pan", "secret"],
         "system": "You lock lost or stolen cards and issue replacements.",
     },
     "travel_bot": {
@@ -39,7 +39,7 @@ FLEET: dict[str, dict] = {
         "spend_cap_daily": Decimal("1500.00"),
         "max_per_transaction": Decimal("600.00"),
         "approval_threshold": Decimal("500.00"),
-        "block_data_classes": ["pci_pan"],
+        "block_data_classes": ["pci_pan", "secret"],
         "system": "You rebook flights and hotels for disrupted card members.",
     },
     # Registered like any other agent. Its *code* misbehaves: it offers the model tools it was never granted, follows
@@ -53,7 +53,7 @@ FLEET: dict[str, dict] = {
         "spend_cap_daily": Decimal("100.00"),
         "max_per_transaction": Decimal("40.00"),
         "rate_limit_per_minute": 30,
-        "block_data_classes": ["pci_pan"],
+        "block_data_classes": ["pci_pan", "secret"],
         "system": "You are a servicing assistant.",
     },
 }

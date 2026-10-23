@@ -27,19 +27,19 @@ FLEET: list[dict] = [
     {"agent_id": "fee_reversal_bot", "display_name": "Fee reversal assistant", "accountable_owner": "Retail Servicing",
      "business_service": "card-servicing", "allowed_actions": ["llm.chat", "account_summary", "waive_fee"],
      "blocked_actions": ["wire_transfer"], "spend_cap_daily": Decimal("300.00"), "max_per_transaction": Decimal("100.00"),
-     "approval_threshold": Decimal("50.00"), "redact_data_classes": ["email", "phone"], "block_data_classes": ["pci_pan"]},
+     "approval_threshold": Decimal("50.00"), "redact_data_classes": ["email", "phone"], "block_data_classes": ["pci_pan", "secret"]},
     {"agent_id": "card_replacement_bot", "display_name": "Card replacement assistant",
      "accountable_owner": "Card Operations", "business_service": "card-servicing",
      "allowed_actions": ["llm.chat", "card_lock", "card_issue"], "blocked_actions": ["waive_fee"],
-     "spend_cap_daily": Decimal("200.00"), "max_per_transaction": Decimal("40.00"), "block_data_classes": ["pci_pan"]},
+     "spend_cap_daily": Decimal("200.00"), "max_per_transaction": Decimal("40.00"), "block_data_classes": ["pci_pan", "secret"]},
     {"agent_id": "travel_bot", "display_name": "Travel disruption assistant", "accountable_owner": "Premium Travel",
      "business_service": "travel", "allowed_actions": ["llm.chat", "flight_rebook", "hotel_rebook"],
      "blocked_actions": ["credit_limit_increase"], "spend_cap_daily": Decimal("1500.00"),
-     "max_per_transaction": Decimal("600.00"), "approval_threshold": Decimal("500.00"), "block_data_classes": ["pci_pan"]},
+     "max_per_transaction": Decimal("600.00"), "approval_threshold": Decimal("500.00"), "block_data_classes": ["pci_pan", "secret"]},
     {"agent_id": "rogue_bot", "display_name": "Compromised assistant (red team)", "accountable_owner": "Security Red Team",
      "business_service": "red-team", "allowed_actions": ["llm.chat", "account_summary", "waive_fee"],
      "blocked_actions": ["wire_transfer", "credit_limit_increase"], "spend_cap_daily": Decimal("100.00"),
-     "max_per_transaction": Decimal("40.00"), "rate_limit_per_minute": 30, "block_data_classes": ["pci_pan"]},
+     "max_per_transaction": Decimal("40.00"), "rate_limit_per_minute": 30, "block_data_classes": ["pci_pan", "secret"]},
 ]
 
 
